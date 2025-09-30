@@ -1,0 +1,45 @@
+project_tree.txt
+  DailyDefenderTests.swift
+  project.pbxproj
+        xcschememanagement.plist
+    contents.xcworkspacedata
+        IDEFindNavigatorScopes.plist
+        WorkspaceSettings.xcsettings
+        UserInterfaceState.xcuserstate
+      WorkspaceSettings.xcsettings
+  WeeklyView.swift
+  DailyView.swift
+  BrandShieldHost.swift
+  ResourcesView.swift
+  Bundle+Version.swift
+  RegistrationView.swift
+  DailyDefenderApp.swift
+  InfoView.swift
+  FeedbackSection.swift
+  DailyDefender.entitlements
+      Contents.json
+      app_logo.png
+      app_logo 1.png
+      app_logo 2.png
+      Contents.json
+      Contents.json
+    Contents.json
+      ATM 10MM grey 2.jpg
+      ATM 10MM grey 1.jpg
+      ATM 10MM grey.jpg
+      Contents.json
+  ShieldBrandFullscreen.swift
+  AskWallyView.swift
+  Untitled.swift
+  ProfileEditView.swift
+  Models+Store.swift
+  Root+ContentView.swift
+  Share.swift
+  ShieldSplashView.swift
+  Theme.swift
+  SharedUI.swift
+maui_scan.txt
+project_tree_clean.txt
+  DailyDefenderUITests.swift
+  DailyDefenderUITestsLaunchTests.swift
+ui_files.txt
