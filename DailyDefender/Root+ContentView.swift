@@ -100,7 +100,7 @@ private struct Content: View {
                 switch tab {
                 case .daily:   DailyView()
                 case .weekly:  WeeklyView()
-                case .monthly: PlaceholderView(title: "Monthly")
+                case .monthly: DevVideoTestView()
                 case .seasons: PlaceholderView(title: "Seasons")
                 case .more:    InfoView()
                 }

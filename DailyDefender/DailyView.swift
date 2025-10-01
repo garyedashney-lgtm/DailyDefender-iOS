@@ -5,13 +5,12 @@ import AVKit
 struct DailyView: View {
     @EnvironmentObject var store: HabitStore
 
-    // Celebration state
+    // Celebration
     @State private var showConfetti = false
     @State private var audioPlayer: AVAudioPlayer?
-    @State private var showVideo = false
-    @State private var videoPlayer: AVPlayer?
-    @State private var endObserver: Any?
-    @State private var itemStatusObs: NSKeyValueObservation?   // wait for readyToPlay
+
+    // Victory video (handled by separate VictoryVideoModal)
+    @State private var showVictoryModal = false
 
     // Profile / Shields
     @State private var showProfileEdit = false
@@ -35,17 +34,16 @@ struct DailyView: View {
         }
     }
 
-    // Progress (4 total: one per pillar)
+    // Progress
     private let totalPossible = 4
     private var completedCount: Int {
         Pillar.allCases.filter { store.completed.contains(pillarId($0)) }.count
     }
-    private var progress: Double { totalPossible == 0 ? 0 : Double(completedCount) / 4.0 }
+    private var progress: Double { Double(completedCount) / Double(totalPossible) }
 
-    // ---- One-shot/rising-edge gating for 2-of-4 & 4-of-4 (per day) ----
+    // Keys for gating
     private var celebrate2Key: String { "celebrated2_\(todayString)" }
     private var prev2Key: String      { "prev2_\(todayString)" }
-
     private var celebrate4Key: String { "celebrated4_\(todayString)" }
     private var prev4Key: String      { "prev4_\(todayString)" }
 
@@ -68,7 +66,7 @@ struct DailyView: View {
                 AppTheme.navy900.ignoresSafeArea()
 
                 List {
-                    // Progress bar + counts
+                    // Progress bar
                     Section {
                         VStack(spacing: 8) {
                             ProgressView(value: progress)
@@ -83,57 +81,52 @@ struct DailyView: View {
                     }
                     .listRowBackground(AppTheme.surface)
 
-                    // 4 Pillar sections
+                    // 4 Pillars
                     ForEach(Pillar.allCases, id: \.self) { pillar in
                         pillarBlock(pillar)
                     }
 
-                    // To-Do section (does not count toward progress)
+                    // To-Do
                     todoBlock()
                 }
                 .listStyle(.plain)
-                .scrollDismissesKeyboard(.interactively)       // drag to dismiss keyboard
+                .scrollDismissesKeyboard(.interactively)
                 .scrollContentBackground(.hidden)
                 .padding(.bottom, 48)
                 .modifier(CompactListTweaks())
 
-                // Confetti overlay
+                // Confetti
                 if showConfetti {
                     ConfettiView()
                         .ignoresSafeArea()
                         .transition(.opacity)
                 }
             }
-            // Use simultaneousGesture so taps still reach row buttons (checkboxes)
+            // If you have hideKeyboard() in a helper, this keeps taps working on rows:
             .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
             // Toolbar
             .toolbar {
-                // LEFT: tappable 4 Ps shield
+                // Left: 4 Ps shield
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showFourPs = true }) {
                         Image("four_ps")
                             .resizable()
-                            .interpolation(.high)
-                            .antialiased(true)
                             .scaledToFit()
                             .frame(width: 36, height: 36)
                             .padding(4)
-                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel("Open 4 Ps Shield")
                 }
 
-                // CENTER: title + date
+                // Center: title/date
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 2) {
                         HStack(spacing: 8) {
                             ZStack {
                                 Image(systemName: "square.fill")
-                                    .renderingMode(.template)
                                     .foregroundColor(AppTheme.appGreen)
                                 Image(systemName: "checkmark")
-                                    .renderingMode(.template)
                                     .foregroundColor(.white)
                                     .font(.system(size: 11, weight: .bold))
                             }
@@ -150,7 +143,7 @@ struct DailyView: View {
                     }
                 }
 
-                // RIGHT: avatar -> ProfileEdit
+                // Right: avatar
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
                         if let path = store.profile.photoPath,
@@ -167,38 +160,24 @@ struct DailyView: View {
                     .frame(width: 36, height: 36)
                     .clipShape(RoundedRectangle(cornerRadius: 9))
                     .onTapGesture { showProfileEdit = true }
-                    .accessibilityLabel("Edit Profile")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(AppTheme.navy900, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-            // Four Ps shield (reusable)
+            // Four Ps shield
             .fullScreenCover(isPresented: $showFourPs) {
                 ShieldPage(imageName: "four_ps")
             }
 
-            // Victory video at 4/4 — AVPlayerViewController (aspect fill) + readyToPlay gate
-            .fullScreenCover(isPresented: $showVideo, onDismiss: {
-                videoPlayer?.pause()
-                videoPlayer = nil
-                if let token = endObserver {
-                    NotificationCenter.default.removeObserver(token)
-                    endObserver = nil
-                }
-                itemStatusObs = nil
-                try? AVAudioSession.sharedInstance().setActive(false)
-            }) {
-                ZStack {
-                    Color.black.ignoresSafeArea()
-                    if let player = videoPlayer {
-                        PlayerViewController(player: player, videoGravity: .resizeAspectFill) // fill screen
-                            .ignoresSafeArea()
-                    }
-                }
+            // Victory video (via standalone modal)
+            .fullScreenCover(isPresented: $showVictoryModal) {
+                VictoryVideoModal(
+                    videoName: "youareamazingguy",
+                    isPresented: $showVictoryModal
+                )
             }
 
             // Profile sheet
@@ -206,40 +185,36 @@ struct DailyView: View {
                 ProfileEditView().environmentObject(store)
             }
 
-            // Seed daily gating on appear
+            // Seed gating
             .onAppear {
                 setPrev2(completedCount >= 2)
                 setPrev4(completedCount >= 4)
             }
 
-            // Celebration triggers for 2-of-4 and 4-of-4
+            // Celebration triggers
             .onChange(of: completedCount) { newValue in
-                // 2-of-4: confetti + “well done”
+                // 2-of-4
                 let nowAtLeast2 = newValue >= 2
                 if !nowAtLeast2 {
                     if hasCelebrated2 { setCelebrated2(false) }
-                    if prevAtLeast2 { setPrev2(false) }
-                } else {
-                    if !prevAtLeast2 && !hasCelebrated2 {
-                        setCelebrated2(true); setPrev2(true)
-                        fireConfettiAndAudio()
-                    } else if !prevAtLeast2 {
-                        setPrev2(true)
-                    }
+                    if prevAtLeast2   { setPrev2(false) }
+                } else if !prevAtLeast2 && !hasCelebrated2 {
+                    setCelebrated2(true); setPrev2(true)
+                    fireConfettiAndAudio()
+                } else if !prevAtLeast2 {
+                    setPrev2(true)
                 }
 
-                // 4-of-4: victory video
+                // 4-of-4
                 let nowAtLeast4 = newValue >= 4
                 if !nowAtLeast4 {
                     if hasCelebrated4 { setCelebrated4(false) }
-                    if prevAtLeast4 { setPrev4(false) }
-                } else {
-                    if !prevAtLeast4 && !hasCelebrated4 {
-                        setCelebrated4(true); setPrev4(true)
-                        fireVideo()
-                    } else if !prevAtLeast4 {
-                        setPrev4(true)
-                    }
+                    if prevAtLeast4   { setPrev4(false) }
+                } else if !prevAtLeast4 && !hasCelebrated4 {
+                    setCelebrated4(true); setPrev4(true)
+                    showVictoryModal = true        // ✅ just present the modal
+                } else if !prevAtLeast4 {
+                    setPrev4(true)
                 }
             }
         }
@@ -252,31 +227,19 @@ struct DailyView: View {
         let checked = store.completed.contains(pid)
 
         Section {
-            // Header + single checkbox (right)
             HStack(spacing: 8) {
-                // Left: emoji + title + divider
                 SectionHeader(label: pillar.label, pillar: pillar, countText: nil)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Right: custom square checkbox
-                CheckSquare(checked: checked) {
-                    store.toggle(pid)
-                }
+                CheckSquare(checked: checked) { store.toggle(pid) }
             }
-            .padding(.horizontal, 2)
-            .listRowInsets(.init(top: 6, leading: 12, bottom: 2, trailing: 12))
             .listRowBackground(AppTheme.navy900)
 
-            // Small italic subtitle
             Text(pillarSubtitle(forLabel: pillar.label))
-                .font(.caption)
-                .italic()
+                .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
-                .padding(.leading, 6)
-                .padding(.bottom, 4)
                 .listRowBackground(AppTheme.navy900)
 
-            // Focus text (persisted per pillar)
             FocusNotesCard(
                 text: persistedFocus(for: pid),
                 placeholder: "Focused activity?",
@@ -284,48 +247,28 @@ struct DailyView: View {
             )
             .listRowBackground(AppTheme.navy900)
         }
-        .listRowBackground(AppTheme.navy900)
     }
 
-    // MARK: - To-Do block (persistent, not day-scoped)
+    // MARK: - To-Do block
     @ViewBuilder
     private func todoBlock() -> some View {
         let todoId = "todo_list"
         let checked = store.completed.contains(todoId)
 
         Section {
-            // Header row with 📝 and right checkbox
             HStack(spacing: 8) {
-                HStack(spacing: 6) {
-                    Text("📝").font(.body)
-                    Text("To do List")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Rectangle()
-                    .frame(height: 1)
-                    .foregroundStyle(AppTheme.divider)
-
-                CheckSquare(checked: checked) {
-                    store.toggle(todoId)
-                }
+                Text("📝 To do List")
+                    .font(.body.weight(.semibold))
+                Spacer()
+                CheckSquare(checked: checked) { store.toggle(todoId) }
             }
-            .padding(.horizontal, 2)
-            .listRowInsets(.init(top: 6, leading: 12, bottom: 2, trailing: 12))
             .listRowBackground(AppTheme.navy900)
 
-            // Optional subtitle
-            Text("Capture key tasks that keep the day moving. Quick hits, reminders, errands, follow-ups, etc.")
-                .font(.caption)
-                .italic()
+            Text("Capture key tasks that keep the day moving...")
+                .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
-                .padding(.leading, 6)
-                .padding(.bottom, 4)
                 .listRowBackground(AppTheme.navy900)
 
-            // Persistent notes (not tied to day)
             FocusNotesCard(
                 text: persistedTodo(),
                 placeholder: "What’s the next task?",
@@ -333,106 +276,43 @@ struct DailyView: View {
             )
             .listRowBackground(AppTheme.navy900)
         }
-        .listRowBackground(AppTheme.navy900)
     }
 
-    // MARK: - Persisted focus helpers (per pillar)
+    // MARK: - Persistence
     private func focusKey(_ pid: String) -> String { "focus_\(pid)" }
     private func persistedFocus(for pid: String) -> String {
-        let raw = UserDefaults.standard.string(forKey: focusKey(pid)) ?? ""
-        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty || s == "-" || s.hasPrefix("- ") || s.lowercased() == "focused activity?" { return "" }
-        return raw
+        UserDefaults.standard.string(forKey: focusKey(pid)) ?? ""
     }
-    private func setPersistedFocus(_ value: String, for pid: String) {
-        UserDefaults.standard.set(value, forKey: focusKey(pid))
+    private func setPersistedFocus(_ v: String, for pid: String) {
+        UserDefaults.standard.set(v, forKey: focusKey(pid))
     }
 
-    // MARK: - Persistent To-Do (day-independent)
     private func persistedTodo() -> String {
-        let raw = UserDefaults.standard.string(forKey: TODO_PERSIST_KEY) ?? ""
-        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty || s == "-" || s.hasPrefix("- ") || s.lowercased() == "what’s the next task?" { return "" }
-        return raw
+        UserDefaults.standard.string(forKey: TODO_PERSIST_KEY) ?? ""
     }
-    private func setPersistedTodo(_ value: String) {
-        UserDefaults.standard.set(value, forKey: TODO_PERSIST_KEY)
+    private func setPersistedTodo(_ v: String) {
+        UserDefaults.standard.set(v, forKey: TODO_PERSIST_KEY)
     }
 
-    // MARK: - Victory / Confetti
-
+    // MARK: - Celebrations
     private func fireConfettiAndAudio() {
-        withAnimation(.easeInOut(duration: 0.2)) { showConfetti = true }
+        withAnimation { showConfetti = true }
         if let url = Bundle.main.url(forResource: "welldone", withExtension: "mp3")
             ?? Bundle.main.url(forResource: "welldone", withExtension: "m4a") {
-            do {
-                audioPlayer = try AVAudioPlayer(contentsOf: url)
-                audioPlayer?.prepareToPlay()
-                audioPlayer?.play()
-            } catch { /* ignore audio failure */ }
+            audioPlayer = try? AVAudioPlayer(contentsOf: url)
+            audioPlayer?.play()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-            withAnimation { showConfetti = false }
-        }
-    }
-
-    private func fireVideo() {
-        // Clean up any prior observers/players
-        if let token = endObserver {
-            NotificationCenter.default.removeObserver(token)
-            endObserver = nil
-        }
-        itemStatusObs = nil
-
-        guard let url = Bundle.main.url(forResource: "youareamazingguy", withExtension: "mp4") else {
-            return
-        }
-
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, options: [.mixWithOthers])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch { }
-
-        let item = AVPlayerItem(url: url)
-        item.preferredForwardBufferDuration = 0
-        let player = AVPlayer(playerItem: item)
-        player.automaticallyWaitsToMinimizeStalling = true
-        player.actionAtItemEnd = .pause
-        player.isMuted = false
-
-        // Auto-dismiss when done
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { _ in
-            showVideo = false
-        }
-
-        videoPlayer = player
-
-        // Wait until the item is READY, then present and play
-        itemStatusObs = item.observe(\.status, options: [.initial, .new]) { _, _ in
-            guard item.status == .readyToPlay else { return }
-            DispatchQueue.main.async {
-                itemStatusObs = nil
-                showVideo = true             // present VC first
-                player.seek(to: .zero)
-                player.play()                // then play
-            }
+            showConfetti = false
         }
     }
 }
 
-//
 // MARK: - Helpers & subviews
-//
 
-/// Simple square checkbox that works on iOS 16+ (no .toggleStyle(.checkbox) needed)
 private struct CheckSquare: View {
     let checked: Bool
     let onTap: () -> Void
-
     var body: some View {
         Button(action: onTap) {
             Image(systemName: checked ? "checkmark.square.fill" : "square")
@@ -442,28 +322,22 @@ private struct CheckSquare: View {
                     checked ? AppTheme.appGreen : .clear
                 )
                 .font(.title3)
-                .padding(6)                    // bigger tap target
-                .contentShape(Rectangle())
-                .accessibilityLabel(checked ? "Uncheck" : "Check")
+                .padding(6)
         }
         .buttonStyle(.plain)
     }
 }
 
-// MARK: - FocusNotesCard (multiline notes card with placeholder + keyboard Done)
 private struct FocusNotesCard: View {
     @State private var textInternal: String
     @FocusState private var isFocused: Bool
-
     let placeholder: String
     let onChange: (String) -> Void
-
     init(text: String, placeholder: String, onChange: @escaping (String) -> Void) {
         _textInternal = State(initialValue: text)
         self.placeholder = placeholder
         self.onChange = onChange
     }
-
     var body: some View {
         ZStack(alignment: .topLeading) {
             if textInternal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -474,16 +348,14 @@ private struct FocusNotesCard: View {
                     .padding(.vertical, 10)
                     .allowsHitTesting(false)
             }
-
             TextEditor(text: $textInternal)
                 .focused($isFocused)
                 .frame(minHeight: 44)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 6)
+                .padding(6)
                 .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 12))
                 .foregroundStyle(AppTheme.textPrimary)
                 .onChange(of: textInternal) { onChange($0) }
-                .toolbar { // keyboard accessory
+                .toolbar {
                     ToolbarItemGroup(placement: .keyboard) {
                         Spacer()
                         Button("Done") { isFocused = false }
@@ -495,7 +367,6 @@ private struct FocusNotesCard: View {
     }
 }
 
-/// Keep List tighter on iOS 17+, noop on iOS 16.
 private struct CompactListTweaks: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -504,29 +375,24 @@ private struct CompactListTweaks: ViewModifier {
                 .contentMargins(.vertical, 0)
                 .listSectionSpacing(.compact)
                 .listRowSpacing(0)
-        } else {
-            content
-        }
+        } else { content }
     }
 }
 
-// MARK: - Pillar subtitles
 private func pillarSubtitle(forLabel label: String) -> String {
     switch label.lowercased() {
     case "physiology":
-        return "The body is the universal address of your existence: Breath, walk, lift, bike, hike, stretch, sleep, fast, eat clean, supplement, hydrate, etc."
+        return "The body is the universal address of your existence..."
     case "piety":
-        return "Using mystery & awe as the spirit speaks for the soul: 3 blessings, waking up, end-of-day prayer, body scan & resets, the watcher, etc."
+        return "Using mystery & awe as the spirit speaks for the soul..."
     case "people":
-        return "Team Human: herd animals who exist in each other: Light people up, reverse the flow, problem solve & collaborate in Defense of Meaning and Freedom, etc."
+        return "Team Human: herd animals who exist in each other..."
     case "production":
-        return "A man produces more than he consumes: Set goals, share talents, make the job the boss, track progress, Pareto Principle, no one outworks me, etc."
-    default:
-        return ""
+        return "A man produces more than he consumes..."
+    default: return ""
     }
 }
 
-// MARK: - Confetti overlay
 private struct ConfettiView: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
@@ -534,15 +400,12 @@ private struct ConfettiView: UIViewRepresentable {
         emitter.emitterShape = .line
         emitter.emitterPosition = CGPoint(x: UIScreen.main.bounds.midX, y: -10)
         emitter.emitterSize = CGSize(width: UIScreen.main.bounds.width, height: 1)
-
-        // Tiny white circle bitmap so CAEmitterCell.color tints properly
         let imageSize: CGFloat = 10
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: imageSize, height: imageSize))
         let whiteCircle = renderer.image { _ in
             UIColor.white.setFill()
             UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: imageSize, height: imageSize)).fill()
         }.cgImage
-
         func cell(_ color: UIColor) -> CAEmitterCell {
             let c = CAEmitterCell()
             c.contents = whiteCircle
@@ -559,40 +422,13 @@ private struct ConfettiView: UIViewRepresentable {
             c.scaleRange = 0.3
             return c
         }
-
         emitter.emitterCells = [
             cell(.systemGreen), cell(.systemBlue), cell(.systemPink),
             cell(.systemOrange), cell(.systemYellow), cell(.systemPurple)
         ]
-
         view.layer.addSublayer(emitter)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { emitter.birthRate = 0 }
         return view
     }
-    func updateUIView(_ uiView: UIView, context: Context) { }
-}
-
-// MARK: - AVPlayerViewController wrapper (full-screen video, aspect fill)
-private struct PlayerViewController: UIViewControllerRepresentable {
-    let player: AVPlayer
-    var videoGravity: AVLayerVideoGravity = .resizeAspect
-
-    func makeUIViewController(context: Context) -> AVPlayerViewController {
-        let vc = AVPlayerViewController()
-        vc.player = player
-        vc.showsPlaybackControls = false
-        vc.entersFullScreenWhenPlaybackBegins = false
-        vc.exitsFullScreenWhenPlaybackEnds = false
-        vc.videoGravity = videoGravity
-        return vc
-    }
-
-    func updateUIViewController(_ vc: AVPlayerViewController, context: Context) {
-        if vc.player !== player {
-            vc.player = player
-        }
-        if vc.videoGravity != videoGravity {
-            vc.videoGravity = videoGravity
-        }
-    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }

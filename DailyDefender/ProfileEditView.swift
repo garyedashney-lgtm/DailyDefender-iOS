@@ -30,6 +30,9 @@ struct ProfileEditView: View {
     @FocusState private var focusedField: Field?
     @State private var didAutoFocus = false
 
+    // Shield (top-left) — static full-screen page
+    @State private var showShield = false
+
     // Dirty detection
     private var isPhotoDirty: Bool {
         if draftImage != nil { return true }
@@ -49,7 +52,7 @@ struct ProfileEditView: View {
                 ScrollView {
                     VStack(spacing: 16) {
 
-                        // Avatar picker (small subview helps the compiler)
+                        // Avatar picker
                         Button { showPicker = true } label: {
                             AvatarChooser(image: currentAvatarImage, label: "Change Photo")
                         }
@@ -126,7 +129,7 @@ struct ProfileEditView: View {
                 }
                 .scrollDismissesKeyboard(.immediately)
 
-                // Top Banner Toast overlay (self-contained here)
+                // Top Banner Toast overlay
                 .overlay(alignment: .top) {
                     if showToast, let msg = toastMessage {
                         BannerToast(message: msg)
@@ -149,18 +152,23 @@ struct ProfileEditView: View {
             .toolbarBackground(AppTheme.navy900, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
+                // Standardized top-left shield → opens static ShieldPage
                 ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: BrandPage()) {
-                        Image("AppLogoRound")
+                    Button(action: { showShield = true }) {
+                        Image("four_ps") // change per-page if needed
                             .resizable()
-                            .scaledToFill()
+                            .scaledToFit()
                             .frame(width: 36, height: 36)
-                            .clipShape(RoundedRectangle(cornerRadius: 9))
-                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(AppTheme.divider, lineWidth: 1))
-                            .accessibilityLabel("Brand")
+                            .padding(4)
+                            .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("Open Shield")
                 }
             }
+        }
+        // Static shield page fullscreen (no video)
+        .fullScreenCover(isPresented: $showShield) {
+            ShieldPage(imageName: "four_ps") // swap PNG if this screen uses a different shield
         }
         // Mailchimp toasts from the Store (for email changes)
         .onReceive(store.$lastMailchimpMessage.compactMap { $0 }) { msg in
@@ -341,7 +349,6 @@ private struct BannerToast: View {
 }
 
 // Reuse avatar circle + scaler locally
-
 private struct AvatarCircle: View {
     let image: UIImage?
     let size: CGFloat
