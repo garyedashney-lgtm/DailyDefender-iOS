@@ -22,21 +22,6 @@ struct VictoryVideoModal: View {
                     .onAppear { kickPlayback() }
             }
 
-            // Little close “X” for dev convenience; safe to remove later
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        isPresented = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .padding(14)
-                    }
-                }
-                Spacer()
-            }
         }
         .onAppear { startVideo() }
         .onDisappear { cleanup() }

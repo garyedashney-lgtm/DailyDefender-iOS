@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import AVKit
+import UIKit
 
 struct DailyView: View {
     @EnvironmentObject var store: HabitStore
@@ -102,7 +103,7 @@ struct DailyView: View {
                         .transition(.opacity)
                 }
             }
-            // If you have hideKeyboard() in a helper, this keeps taps working on rows:
+            // Tap outside to dismiss keyboard cleanly
             .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
             // Toolbar
@@ -114,6 +115,8 @@ struct DailyView: View {
                             .resizable()
                             .scaledToFit()
                             .frame(width: 36, height: 36)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
                             .padding(4)
                     }
                     .accessibilityLabel("Open 4 Ps Shield")
@@ -191,7 +194,7 @@ struct DailyView: View {
                 setPrev4(completedCount >= 4)
             }
 
-            // Celebration triggers
+            // Celebration triggers — UNCHANGED
             .onChange(of: completedCount) { newValue in
                 // 2-of-4
                 let nowAtLeast2 = newValue >= 2
@@ -212,13 +215,15 @@ struct DailyView: View {
                     if prevAtLeast4   { setPrev4(false) }
                 } else if !prevAtLeast4 && !hasCelebrated4 {
                     setCelebrated4(true); setPrev4(true)
-                    showVictoryModal = true        // ✅ just present the modal
+                    showVictoryModal = true
                 } else if !prevAtLeast4 {
                     setPrev4(true)
                 }
             }
         }
     }
+
+    // Inside DailyView.swift
 
     // MARK: - Pillar block
     @ViewBuilder
@@ -227,24 +232,35 @@ struct DailyView: View {
         let checked = store.completed.contains(pid)
 
         Section {
+            // Header row: flush-left like Weekly
             HStack(spacing: 8) {
                 SectionHeader(label: pillar.label, pillar: pillar, countText: nil)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 CheckSquare(checked: checked) { store.toggle(pid) }
+                    .padding(.trailing, 6) // ✅ pull in a tad from screen edge
             }
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+            .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
+            // Subtitle: flush-left, allow full wrapping
             Text(pillarSubtitle(forLabel: pillar.label))
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+                .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            FocusNotesCard(
+            // Full-width, centered input card
+            PlainNotesCard(
                 text: persistedFocus(for: pid),
                 placeholder: "Focused activity?",
                 onChange: { setPersistedFocus($0, for: pid) }
             )
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0)) // full width
+            .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
         }
     }
@@ -256,28 +272,38 @@ struct DailyView: View {
         let checked = store.completed.contains(todoId)
 
         Section {
+            // Header row flush-left
             HStack(spacing: 8) {
                 Text("📝 To do List")
                     .font(.body.weight(.semibold))
                 Spacer()
                 CheckSquare(checked: checked) { store.toggle(todoId) }
+                    .padding(.trailing, 6) // ✅ same adjustment here
             }
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+            .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
+            // Subtitle flush-left
             Text("Capture key tasks that keep the day moving...")
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+                .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            FocusNotesCard(
+            // Full-width input card
+            PlainNotesCard(
                 text: persistedTodo(),
                 placeholder: "What’s the next task?",
                 onChange: { setPersistedTodo($0) }
             )
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0)) // full width
+            .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
         }
     }
-
     // MARK: - Persistence
     private func focusKey(_ pid: String) -> String { "focus_\(pid)" }
     private func persistedFocus(for pid: String) -> String {
@@ -308,8 +334,7 @@ struct DailyView: View {
     }
 }
 
-// MARK: - Helpers & subviews
-
+// MARK: - Helpers & subviews (unchanged checkbox)
 private struct CheckSquare: View {
     let checked: Bool
     let onTap: () -> Void
@@ -328,18 +353,25 @@ private struct CheckSquare: View {
     }
 }
 
-private struct FocusNotesCard: View {
+// MARK: - Plain (non-bullet) notes card with perfectly centered first line
+private struct PlainNotesCard: View {
     @State private var textInternal: String
     @FocusState private var isFocused: Bool
     let placeholder: String
     let onChange: (String) -> Void
+
     init(text: String, placeholder: String, onChange: @escaping (String) -> Void) {
         _textInternal = State(initialValue: text)
         self.placeholder = placeholder
         self.onChange = onChange
     }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.surfaceUI)
+
+            // Placeholder overlay (unchanged look)
             if textInternal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(placeholder)
                     .font(.callout.italic())
@@ -348,24 +380,80 @@ private struct FocusNotesCard: View {
                     .padding(.vertical, 10)
                     .allowsHitTesting(false)
             }
-            TextEditor(text: $textInternal)
-                .focused($isFocused)
-                .frame(minHeight: 44)
-                .padding(6)
-                .background(AppTheme.surface, in: RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(AppTheme.textPrimary)
-                .onChange(of: textInternal) { onChange($0) }
-                .toolbar {
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Done") { isFocused = false }
-                    }
-                }
+
+            CenteredTextView(
+                text: $textInternal,
+                onChanged: { onChange($0) },
+                targetSingleLineHeight: 46 // ✅ match WeeklyView exact centering
+            )
+            .frame(minHeight: 46)
+            .background(Color.clear)
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 0) // full width
         .padding(.bottom, 4)
     }
 }
+
+// MARK: - UIKit text view that centers the baseline for single-line text (matching Weekly)
+private struct CenteredTextView: UIViewRepresentable {
+    @Binding var text: String
+    var onChanged: (String) -> Void
+    var targetSingleLineHeight: CGFloat = 46
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.backgroundColor = .clear
+        tv.textColor = UIColor.white
+        tv.tintColor = UIColor(AppTheme.appGreen)
+        tv.font = UIFont.preferredFont(forTextStyle: .body)
+        tv.isScrollEnabled = false
+        tv.keyboardDismissMode = .interactive
+        tv.textContainer.lineFragmentPadding = 0
+        tv.contentInset = .zero
+        tv.delegate = context.coordinator
+
+        applyCenteredInsets(to: tv)
+        tv.text = text
+        return tv
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.text != text { uiView.text = text }
+        applyCenteredInsets(to: uiView)
+    }
+
+    private func applyCenteredInsets(to tv: UITextView) {
+        let font = tv.font ?? UIFont.preferredFont(forTextStyle: .body)
+        let asc  = font.ascender
+        let desc = abs(font.descender)
+        let lead = font.leading
+        let line = asc + desc + lead
+
+        let H: CGFloat = targetSingleLineHeight
+        let base = max(0, (H - line) / 2)
+
+        // Match Weekly: slight bottom bias to look optically centered
+        let top = base.rounded(.toNearestOrEven)
+        let bottom = (base + 2.0).rounded(.toNearestOrEven)
+
+        tv.textContainerInset = UIEdgeInsets(top: top, left: 12, bottom: bottom, right: 12)
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: CenteredTextView
+        init(_ parent: CenteredTextView) { self.parent = parent }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text ?? ""
+            parent.onChanged(parent.text)
+        }
+        func textViewShouldEndEditing(_ textView: UITextView) -> Bool { true }
+    }
+}
+
+// Existing helpers
 
 private struct CompactListTweaks: ViewModifier {
     @ViewBuilder
@@ -393,6 +481,7 @@ private func pillarSubtitle(forLabel label: String) -> String {
     }
 }
 
+// Confetti unchanged
 private struct ConfettiView: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
