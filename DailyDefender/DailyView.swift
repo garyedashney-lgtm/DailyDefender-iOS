@@ -106,9 +106,9 @@ struct DailyView: View {
             // Tap outside to dismiss keyboard cleanly
             .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
-            // Toolbar
+            // ✅ All toolbar items must live inside ONE .toolbar { ... } block
             .toolbar {
-                // Left: 4 Ps shield
+                // LEFT — shield (4 Ps)
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showFourPs = true }) {
                         Image("four_ps")
@@ -118,11 +118,12 @@ struct DailyView: View {
                             .clipShape(Circle())
                             .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
                             .padding(4)
+                            .offset(y: -2) // optical center
                     }
                     .accessibilityLabel("Open 4 Ps Shield")
                 }
 
-                // Center: title/date
+                // CENTER — title/date
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 2) {
                         HStack(spacing: 8) {
@@ -138,6 +139,8 @@ struct DailyView: View {
                             Text("Daily Defender Actions")
                                 .font(.headline.weight(.bold))
                                 .foregroundStyle(AppTheme.textPrimary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.9)
                         }
                         Text("Today: \(todayString)")
                             .font(.caption)
@@ -146,11 +149,10 @@ struct DailyView: View {
                     }
                 }
 
-                // Right: avatar
+                // RIGHT — profile avatar
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
-                        if let path = store.profile.photoPath,
-                           let ui = UIImage(contentsOfFile: path) {
+                        if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
                             Image(uiImage: ui).resizable().scaledToFill()
                         } else if UIImage(named: "ATMPic") != nil {
                             Image("ATMPic").resizable().scaledToFill()
@@ -160,16 +162,24 @@ struct DailyView: View {
                                 .foregroundStyle(.white, AppTheme.appGreen)
                         }
                     }
-                    .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .offset(y: -2) // optical center
                     .onTapGesture { showProfileEdit = true }
+                    .accessibilityLabel("Profile")
                 }
             }
+
+            // Keep these AFTER .toolbar
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.navy900, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
+            // Full-screen covers & sheets follow...
+            .fullScreenCover(isPresented: $showFourPs) {
+                ShieldPage(imageName: "four_ps")
+            }
             // Four Ps shield
             .fullScreenCover(isPresented: $showFourPs) {
                 ShieldPage(imageName: "four_ps")

@@ -182,9 +182,9 @@ struct WeeklyView: View {
             // Tap outside to dismiss keyboard (matches Daily)
             .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
-            // === Toolbar (matches Daily pattern) ===
+            // === Toolbar (standardized like Daily) ===
             .toolbar {
-                // Left: The 4 Ps shield
+                // Left: Shield icon → FULL SCREEN cover
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showShield = true }) {
                         Image("four_ps")
@@ -194,6 +194,7 @@ struct WeeklyView: View {
                             .clipShape(Circle())
                             .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
                             .padding(4)
+                            .offset(y: -2) // optical center
                     }
                     .accessibilityLabel("Open 4 Ps Shield")
                 }
@@ -214,7 +215,7 @@ struct WeeklyView: View {
                     }
                 }
 
-                // Right: avatar → ProfileEditView
+                // Right: avatar (32pt) → ProfileEditView
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
                         if let path = store.profile.photoPath,
@@ -228,9 +229,11 @@ struct WeeklyView: View {
                                 .foregroundStyle(.white, AppTheme.appGreen)
                         }
                     }
-                    .frame(width: 36, height: 36)
-                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                    .frame(width: 32, height: 32)                    // standardized size
+                    .clipShape(RoundedRectangle(cornerRadius: 8))    // standardized radius
+                    .offset(y: -2)                                    // optical center
                     .onTapGesture { showProfileEdit = true }
+                    .accessibilityLabel("Profile")
                 }
             }
             .navigationBarTitleDisplayMode(.inline)

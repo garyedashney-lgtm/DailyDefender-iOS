@@ -98,11 +98,24 @@ private struct Content: View {
 
             Group {
                 switch tab {
-                case .daily:   DailyView()
-                case .weekly:  WeeklyView()
-                case .monthly: DevVideoTestView()
-                case .seasons: PlaceholderView(title: "Seasons")
-                case .more:    InfoView()
+                case .daily:
+                    DailyView()
+                case .weekly:
+                    WeeklyView()
+
+                case .goals:
+                    GoalsView()
+                        .environmentObject(store)
+
+                case .journal:
+                    JournalPlaceholderView() // swap to JournalHomeView() when ready
+
+                case .more:
+                    MoreView()
+                            .environmentObject(store)
+                    
+    
+            
                 }
             }
         }
@@ -151,4 +164,28 @@ private struct PlaceholderView: View {
                 .padding()
         }
     }
+}
+private struct GoalsPlaceholderView: View {
+    var body: some View {
+        ZStack {
+            AppTheme.navy900.ignoresSafeArea()
+            Text("Goals — Coming Soon")
+                .foregroundStyle(AppTheme.textSecondary)
+                .padding()
+        }
+    }
+}
+
+private struct JournalPlaceholderView: View {
+    var body: some View {
+        ZStack {
+            AppTheme.navy900.ignoresSafeArea()
+            Text("Journal — Coming Soon")
+                .foregroundStyle(AppTheme.textSecondary)
+                .padding()
+        }
+    }
+}
+private extension Notification.Name {
+    static let reselectTab = Notification.Name("reselectTab")
 }
