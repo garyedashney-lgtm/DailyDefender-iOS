@@ -1,1 +1,8 @@
 DailyDefender.xcodeproj/project.xcworkspace/xcuserdata/
+# Xcode user state (never track)
+**/*.xcuserstate
+**/*.xcscmblueprint
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
