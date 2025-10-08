@@ -209,7 +209,7 @@ Use the Share feedback button below to share feedback on the app — whether it�
     }
 }
 
-// MARK: - Collapsible Section
+// MARK: - Collapsible Section (flat style + animated chevron + fade)
 private struct CollapsibleSection<Content: View>: View {
     let title: String
     @Binding var isExpanded: Bool
@@ -217,6 +217,7 @@ private struct CollapsibleSection<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Header row
             Button {
                 withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) {
                     isExpanded.toggle()
@@ -231,40 +232,42 @@ private struct CollapsibleSection<Content: View>: View {
                         .minimumScaleFactor(0.85)
 
                     Spacer()
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+
+                    Image(systemName: "chevron.down")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 12, height: 6)
                         .foregroundStyle(AppTheme.textSecondary)
+                        .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                        .animation(.easeOut(duration: 0.18), value: isExpanded)
                 }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AppTheme.surfaceUI)
-                        .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
-                )
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
+            // Expanded content — now with fade
             if isExpanded {
                 VStack(alignment: .leading, spacing: 10) {
                     content
                 }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AppTheme.surfaceUI)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(AppTheme.surfaceUI.opacity(0.35), lineWidth: 1)
-                )
                 .padding(.top, 6)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(
+                    .opacity
+                        .animation(.easeInOut(duration: 0.22))
+                        .combined(with: .move(edge: .top))
+                )
             }
+
+            Divider()
+                .overlay(AppTheme.textSecondary.opacity(0.15))
+                .padding(.top, 8)
         }
+        .background(Color.clear)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(title))
     }
 }
-
 // MARK: - Feedback Section (email handoff like Android)
 private struct FeedbackSection: View {
     @State private var showMailComposer = false

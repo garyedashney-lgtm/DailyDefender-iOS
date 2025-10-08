@@ -1,13 +1,10 @@
 import SwiftUI
 
-// Notif used to tell child screens to pop when user re-taps the active tab (e.g., More)
 private extension Notification.Name {
     static let reselectTab = Notification.Name("reselectTab")
 }
 
-enum IosPage: Hashable {
-    case daily, weekly, goals, journal, more
-}
+enum IosPage: Hashable { case daily, weekly, goals, journal, more }
 
 struct IOSFooterBar: View {
     let currentPage: IosPage
@@ -17,8 +14,8 @@ struct IOSFooterBar: View {
     let weekKey: String
 
     private var unselectedTint: Color { Color.white.opacity(0.72) }
-    private var selectedTint: Color { AppTheme.appGreen } // brand green, like Android
-    private var footerFont: Font { .system(size: 11, weight: .regular) } // Android labelSmall ~11sp
+    private var selectedTint: Color { AppTheme.appGreen }
+    private var footerFont: Font { .system(size: 11, weight: .regular) }
 
     @ViewBuilder
     private func Item(_ page: IosPage, label: String, systemName: String) -> some View {
@@ -35,14 +32,12 @@ struct IOSFooterBar: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.85)
         }
-        .frame(maxWidth: .infinity, minHeight: 56) // match Android item height
+        .frame(maxWidth: .infinity, minHeight: 56)
         .contentShape(Rectangle())
         .onTapGesture {
             if page == currentPage {
-                // Re-tapped the active tab: broadcast so nested stacks can pop to root.
                 NotificationCenter.default.post(name: .reselectTab, object: page)
             } else {
-                // Normal tab switch.
                 onSelectPage(page)
             }
         }
@@ -51,28 +46,43 @@ struct IOSFooterBar: View {
     }
 
     var body: some View {
+        let isDev = Bundle.main.isDev
+
         VStack(spacing: 0) {
-            // Thin top separator
             Rectangle()
                 .fill(Color.white.opacity(0.10))
                 .frame(height: 1)
 
-            // Row 1: icons + labels (mirrors Android order)
+            // Row 1: icons + labels
             HStack(spacing: 0) {
-                Item(.daily,   label: "Daily",   systemName: "checkmark.square")     // FactCheck analog
-                Item(.weekly,  label: "Weekly",  systemName: "calendar")              // DateRange analog
-                Item(.goals,   label: "Goals",   systemName: "target")                // TrackChanges analog
-                Item(.journal, label: "Journal", systemName: "book")                  // MenuBook analog
-                Item(.more,    label: "More",    systemName: "line.3.horizontal")     // Dehaze analog
+                Item(.daily,   label: "Daily",   systemName: "checkmark.square")
+                Item(.weekly,  label: "Weekly",  systemName: "calendar")
+                Item(.goals,   label: "Goals",   systemName: "target")
+                Item(.journal, label: "Journal", systemName: "book")
+                Item(.more,    label: "More",    systemName: "line.3.horizontal")
             }
             .padding(.horizontal, 6)
 
-            // Row 2: app/version + ISO week
-            HStack {
-                Text("ATM 10MM App")
-                    .font(footerFont)
-                    .foregroundStyle(Color.white.opacity(0.72))
+            // Row 2: app/version + ISO week + DEV badge (only on dev target)
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("ATM 10MM App")
+                        .font(footerFont)
+                        .foregroundStyle(Color.white.opacity(0.72))
+
+                    if isDev {
+                        Text("DEV")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 6).padding(.vertical, 2)
+                            .background(Color.red.opacity(0.95))
+                            .clipShape(Capsule())
+                            .foregroundStyle(.white)
+                            .accessibilityLabel(Text("Development build"))
+                    }
+                }
+
                 Spacer()
+
                 Text("v\(versionName) (\(versionCode)) • \(weekKey)")
                     .font(footerFont)
                     .foregroundStyle(Color.white.opacity(0.72))
@@ -80,7 +90,7 @@ struct IOSFooterBar: View {
             .frame(height: 24)
             .padding(.horizontal, 12)
         }
-        .background(AppTheme.navy900) // darker band like Android
+        .background(AppTheme.navy900)
         .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: -2)
         .ignoresSafeArea(edges: .bottom)
     }
