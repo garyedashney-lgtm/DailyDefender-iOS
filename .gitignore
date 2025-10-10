@@ -8,3 +8,9 @@ DailyDefender.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcworkspace/xcuserdata/
 DailyDefender.xcodeproj/xcuserdata/
 DailyDefender.xcodeproj/xcuserdata/
+# Xcode user state
+**/*.xcuserstate
+**/*.xcscmblueprint
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcworkspace/xcuserdata/

@@ -31,7 +31,7 @@ struct GoalsView: View {
 
                         // Monthly Goals
                         NavigationLink {
-                            MonthlyGoalsPlaceholder().environmentObject(store)
+                            MonthlyGoalsView().environmentObject(store)
                         } label: {
                             GoalsCardRow(
                                 title: "Monthly Goals",
@@ -43,7 +43,7 @@ struct GoalsView: View {
 
                         // Seasonal Goals
                         NavigationLink {
-                            SeasonsGoalsPlaceholder().environmentObject(store)
+                            SeasonsGoalsView().environmentObject(store)
                         } label: {
                             GoalsCardRow(
                                 title: "Seasonal Goals",
