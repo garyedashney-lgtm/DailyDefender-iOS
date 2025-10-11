@@ -108,7 +108,8 @@ private struct Content: View {
                         .environmentObject(store)
 
                 case .journal:
-                    JournalPlaceholderView() // swap to JournalHomeView() when ready
+                    JournalHomeView()
+                        .environmentObject(store)
 
                 case .more:
                     MoreView()

@@ -1,5 +1,11 @@
 import SwiftUI
+import Foundation
 
+import Foundation
+
+extension Notification.Name {
+    static let JumpToJournalHome = Notification.Name("JumpToJournalHome")
+}
 // MARK: - Section Headers
 
 struct SectionHeader: View {

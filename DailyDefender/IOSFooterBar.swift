@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 private extension Notification.Name {
     static let reselectTab = Notification.Name("reselectTab")
@@ -36,7 +37,13 @@ struct IOSFooterBar: View {
         .contentShape(Rectangle())
         .onTapGesture {
             if page == currentPage {
+                // Reselect on same tab
                 NotificationCenter.default.post(name: .reselectTab, object: page)
+
+                // Special: if Journal is reselected, jump back to JournalHome.
+                if page == .journal {
+                    NotificationCenter.default.post(name: .JumpToJournalHome, object: nil)
+                }
             } else {
                 onSelectPage(page)
             }
