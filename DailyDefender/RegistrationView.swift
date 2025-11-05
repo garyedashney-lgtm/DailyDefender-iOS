@@ -2,337 +2,223 @@ import SwiftUI
 import PhotosUI
 
 struct RegistrationView: View {
+    @EnvironmentObject var session: SessionViewModel
     @EnvironmentObject var store: HabitStore
-    @Environment(\.dismiss) private var dismiss
-
-    var onRegistered: () -> Void
-
-    // Form state
+    let onRegistered: () -> Void
+    
     @State private var name: String = ""
     @State private var email: String = ""
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var draftImage: UIImage?
-    @State private var savedPhotoPath: String?
-
-    // UX
-    @State private var errorText: String?
-    @State private var toastMessage: String?
-    @State private var showToast = false
-
-    // Focus — keep at struct scope
-    private enum Field: Hashable { case name, email }
-    @FocusState private var focusedField: Field?
-    @State private var didAutoFocus = false
+    @State private var password: String = ""
+    @State private var error: String?
+    @State private var isLoading = false
+    @State private var showPassword = false
+    @State private var showReset = false
     
-    @State private var showShieldShowcase = false
-
+    @State private var photoItem: PhotosPickerItem?
+    @State private var photoData: Data?
+    @State private var photoUri: String? // path or base64/url string if you persist locally
+    
+    // Prefill (rough equivalent to Android's profileFlow prefill)
+    @State private var initialized = false
+    
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppTheme.navy900.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(spacing: 16) {
-
-                        // Avatar picker (split into small subview to help the compiler)
-                        PhotosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared()) {
-                            AvatarChooser(image: currentAvatarImage)
-                        }
-                        .onChange(of: pickerItem) { newItem in
-                            guard let newItem else { return }
-                            Task { await loadPickedImage(from: newItem) }
-                        }
-
-                        // Name
-                        LabeledField(title: "Name") {
-                            TextField("Your name", text: $name)
-                                .textContentType(.name)
-                                .submitLabel(.done)
-                                .focused($focusedField, equals: .name)
-                                .padding(12)
-                                .background(AppTheme.surfaceUI, in: RoundedRectangle(cornerRadius: 12))
-                                .foregroundStyle(AppTheme.textPrimary)
-                                .contentShape(Rectangle())
-                                .onTapGesture { focusedField = .name }
-                        }
-
-                        // Email
-                        LabeledField(title: "Email") {
-                            TextField("you@domain.com", text: $email)
-                                .keyboardType(.emailAddress)
-                                .textContentType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled(true)
-                                .submitLabel(.done)
-                                .focused($focusedField, equals: .email)
-                                .padding(12)
-                                .background(AppTheme.surfaceUI, in: RoundedRectangle(cornerRadius: 12))
-                                .foregroundStyle(AppTheme.textPrimary)
-                                .contentShape(Rectangle())
-                                .onTapGesture { focusedField = .email }
-                                .onSubmit { saveAndContinue() }
-                        }
-
-                        if let err = errorText {
-                            Text(err)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
-
-                        Button(action: saveAndContinue) {
-                            Text("Save & Continue")
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(AppTheme.appGreen)
-                        .foregroundStyle(.white)
-                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                    .padding(16)
-                }
-                .scrollDismissesKeyboard(.immediately)
-
-                // Top Banner Toast overlay (self-contained here)
-                .overlay(alignment: .top) {
-                    if showToast, let msg = toastMessage {
-                        BannerToast(message: msg)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                            .zIndex(10)
-                            .onAppear {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-                                    withAnimation { showToast = false }
-                                    store.lastMailchimpMessage = nil
-                                }
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Avatar (tap the circle to pick a photo)
+                    PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                        ZStack {
+                            if let data = photoData, let img = UIImage(data: data) {
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 96, height: 96)
+                                    .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(Color.white.opacity(0.1))
+                                    .frame(width: 96, height: 96)
+                                    .overlay(
+                                        Text(initials(from: name))
+                                            .font(.title.bold())
+                                    )
                             }
-                            .padding(.top, 8)
-                            .allowsHitTesting(false)
+                        }
                     }
+                    .disabled(isLoading)
+                    
+                    // Name
+                    TextField("Name", text: $name)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .padding(12)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.secondary))
+                        .disabled(isLoading)
+                    
+                    // Email (read-only if returning signed-out; for simplicity always editable here)
+                    TextField("Email", text: $email)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .padding(12)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.secondary))
+                        .disabled(isLoading)
+                    
+                    // Password with eye toggle
+                    ZStack(alignment: .trailing) {
+                        Group {
+                            if showPassword {
+                                TextField("Password (min 6 chars)", text: $password)
+                            } else {
+                                SecureField("Password (min 6 chars)", text: $password)
+                            }
+                        }
+                        .textContentType(.password)
+                        .padding(12)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.secondary))
+                        Button(action: { showPassword.toggle() }) {
+                            Image(systemName: showPassword ? "eye.slash" : "eye")
+                                .padding(.trailing, 10)
+                        }
+                    }
+                    .disabled(isLoading)
+                    
+                    // Error + Forgot password
+                    VStack(alignment: .leading, spacing: 6) {
+                        if let e = error {
+                            Text(e).foregroundStyle(.red).font(.footnote)
+                        }
+                        if showReset {
+                            Button {
+                                sendReset()
+                            } label: {
+                                Text("Forgot password? Tap here")
+                                    .underline()
+                                    .font(.body)
+                            }
+                            .disabled(isLoading)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // Continue button (Android behavior: try sign-in, else register)
+                    Button(action: continueTapped) {
+                        if isLoading {
+                            HStack {
+                                ProgressView().scaleEffect(0.8)
+                                Text("Working…")
+                            }
+                        } else {
+                            Text("Save & Continue")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .disabled(isLoading)
+                    .padding(.top, 8)
                 }
+                .padding(16)
             }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
             .navigationTitle("Create your profile")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(AppTheme.navy900, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    NavigationLink(destination: BrandPage()) {
-                        Image("AppLogoRound")
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 36, height: 36)
-                            .clipShape(RoundedRectangle(cornerRadius: 9))
-                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(AppTheme.divider, lineWidth: 1))
-                            .accessibilityLabel("Brand")
-                    }
-                }
-            }
-            // Listen for Mailchimp message
-            .onReceive(store.$lastMailchimpMessage.compactMap { $0 }) { msg in
-                hideKeyboard()
-                toastMessage = msg
-                withAnimation { showToast = true }
-
-                if shouldAdvance(after: msg) {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                        onRegistered()
-                    }
-                }
-            }
-            .onChange(of: showToast) { isShowing in
-                if isShowing { hideKeyboard() }
-            }
-            .onAppear {
-                // Auto-focus name once when view first appears
-                if !didAutoFocus {
-                    didAutoFocus = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        focusedField = .name
-                    }
+        }
+        .task(id: photoItem) {
+            guard let item = photoItem, !isLoading else { return }
+            if let data = try? await item.loadTransferable(type: Data.self) {
+                photoData = data
+                if let ui = UIImage(data: data) {
+                    // persist to disk so Profile has a stable path
+                    photoUri = savePhotoToDocuments(ui)
                 }
             }
         }
+        .onAppear {
+            // Optionally prefill from a local profile store if you have one (hook up here)
+            if !initialized {
+                // If your HabitStore exposes a current profile, fill name/email/photoUri here
+                // name = store.profile.name ?? ""
+                // email = store.profile.email ?? ""
+                initialized = true
+            }
+        }
     }
-
-    // MARK: - Helpers
-
-    private var currentAvatarImage: UIImage? {
-        if let draftImage { return draftImage }
-        if let path = savedPhotoPath, let img = UIImage(contentsOfFile: path) { return img }
-        return nil
+    
+    private func continueTapped() {
+        guard !isLoading else { return }
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let e = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        
+        if n.isEmpty { error = "Please enter your name"; return }
+        if !isValidEmail(e) { error = "Please enter a valid email"; return }
+        if password.count < 6 { error = "Password must be at least 6 characters"; return }
+        
+        error = nil
+        showReset = false
+        isLoading = true
+        
+        Task {
+            // Android-style: try sign-in, else register
+            let signedIn = await session.signInOrRegister(email: e, password: password)
+            if !signedIn {
+                // Sign-in AND register failed — show friendly error and reset link
+                showReset = true
+                isLoading = false
+                return
+            }
+            
+            // 2) Save local profile and mark registered (mirror Android)
+            let finalPhoto = photoUri /* or a saved path from PhotosPicker if you implement */
+            // Adjust signature if your HabitStore differs:
+            store.saveProfile(name: n, email: e, photoPath: finalPhoto, isRegistered: true)
+            
+            // 2.5) Seed Firestore and try pro=true (rules-gated)
+            await session.runSeedIfNeeded()
+            await session.refreshEntitlements()
+            
+            isLoading = false
+            onRegistered() // session.user != nil will push to RootView via AuthGateView
+        }
     }
-
+    
+    private func sendReset() {
+        let e = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard isValidEmail(e) else {
+            error = "Enter a valid email first to reset your password."
+            return
+        }
+        Task {
+            do {
+                try await session.sendPasswordReset(to: e)
+                error = nil
+            } catch {
+                // Keep it generic to avoid account enumeration
+                self.error = "Email or password is incorrect."
+            }
+        }
+    }
+    
     private func isValidEmail(_ s: String) -> Bool {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !t.isEmpty else { return false }
-        let regex = #"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$"#
-        return NSPredicate(format: "SELF MATCHES[c] %@", regex).evaluate(with: t)
+        // Simple but effective; replace with stricter regex if you prefer
+        return s.contains("@") && s.contains(".") && !s.hasPrefix("@") && !s.hasSuffix("@")
     }
-
-    private func loadPickedImage(from item: PhotosPickerItem) async {
-        if let data = try? await item.loadTransferable(type: Data.self),
-           let img = UIImage(data: data) {
-            draftImage = img.scaledDownIfNeeded(maxDimension: 1600)
-            savedPhotoPath = nil
-        }
+    
+    private func initials(from name: String) -> String {
+        let parts = name.split(separator: " ")
+        let first = parts.first?.first.map(String.init) ?? "D"
+        let second = parts.dropFirst().first?.first.map(String.init) ?? "D"
+        return first + second
     }
-
-    private func persistDraftImageIfNeeded() -> String? {
-        guard let img = draftImage,
-              let data = img.jpegData(compressionQuality: 0.9) else { return savedPhotoPath }
-        let filename = "profile_\(UUID().uuidString).jpg"
+    private func savePhotoToDocuments(_ image: UIImage) -> String? {
+        guard let data = image.jpegData(compressionQuality: 0.9) else { return nil }
+        let filename = UUID().uuidString + ".jpg"
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(filename)
         do {
             try data.write(to: url, options: .atomic)
             return url.path
         } catch {
-            return savedPhotoPath
-        }
-    }
-
-    private func saveAndContinue() {
-        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let e = email.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !n.isEmpty else {
-            errorText = "Please enter your name"
-            return
-        }
-        guard isValidEmail(e) else {
-            errorText = "Please enter a valid email"
-            hideKeyboard()
-            toastMessage = "Please enter a valid email"
-            withAnimation { showToast = true }
-            return
-        }
-        errorText = nil
-
-        let finalPath = persistDraftImageIfNeeded()
-        store.saveProfile(name: n, email: e, photoPath: finalPath, isRegistered: false)
-
-        // Wait for Mailchimp message toast in onReceive
-        hideKeyboard()
-    }
-
-    /// Decide if Mailchimp message is "good enough" to advance.
-    private func shouldAdvance(after message: String) -> Bool {
-        let lower = message.lowercased()
-        let okHints = [
-            "subscribed",
-            "already on the list",
-            "already subscribed",
-            "subscription confirmed",
-            "successfully subscribed",
-            "thank you for subscribing",
-            "check your email",
-            "almost finished"
-        ]
-        let errorHints = [
-            "invalid",
-            "failed",
-            "couldn’t", "couldn't",
-            "try again",
-            "too many attempts",
-            "network error"
-        ]
-        if errorHints.contains(where: { lower.contains($0) }) { return false }
-        if okHints.contains(where: { lower.contains($0) }) { return true }
-        return true
-    }
-}
-
-// MARK: - Small subviews (kept tiny to help the compiler)
-
-private struct AvatarChooser: View {
-    let image: UIImage?
-    var body: some View {
-        ZStack {
-            AvatarCircle(image: image, size: 120)
-            Circle()
-                .stroke(AppTheme.divider, lineWidth: 1)
-                .frame(width: 120, height: 120)
-            VStack {
-                Spacer()
-                Text("Tap to add a photo")
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .padding(.bottom, 6)
-            }
-            .frame(width: 120, height: 120)
-        }
-    }
-}
-
-private struct LabeledField<Content: View>: View {
-    let title: String
-    @ViewBuilder var content: () -> Content
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.textSecondary)
-            content()
-        }
-    }
-}
-
-// Reuse your avatar circle and image scaler
-private struct AvatarCircle: View {
-    let image: UIImage?
-    let size: CGFloat
-    var body: some View {
-        Group {
-            if let img = image {
-                Image(uiImage: img).resizable().scaledToFill()
-            } else if UIImage(named: "ATMPic") != nil {
-                Image("ATMPic").resizable().scaledToFill()
-            } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, AppTheme.appGreen)
-                    .font(.system(size: size * 0.55))
-                    .frame(width: size, height: size)
-            }
-        }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
-    }
-}
-
-// Self-contained toast for this file
-private struct BannerToast: View {
-    let message: String
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-            Text(message)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(AppTheme.surfaceUI)
-        .foregroundStyle(AppTheme.textPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(radius: 6)
-        .padding(.horizontal, 16)
-        .allowsHitTesting(false)
-    }
-}
-
-private extension UIImage {
-    func scaledDownIfNeeded(maxDimension: CGFloat) -> UIImage {
-        let w = size.width, h = size.height
-        let maxSide = max(w, h)
-        guard maxSide > maxDimension else { return self }
-        let scale = maxDimension / maxSide
-        let newSize = CGSize(width: w * scale, height: h * scale)
-        let renderer = UIGraphicsImageRenderer(size: newSize)
-        return renderer.image { _ in
-            self.draw(in: CGRect(origin: .zero, size: newSize))
+            return nil
         }
     }
 }

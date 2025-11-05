@@ -3,6 +3,7 @@ import UIKit
 
 struct WeeklyView: View {
     @EnvironmentObject var store: HabitStore
+    @EnvironmentObject var session: SessionViewModel
 
     // MARK: - Week Key (ISO week, Monday-start)
     private var weekKey: String { Self.isoWeekKey(for: Date()) }
@@ -61,197 +62,202 @@ struct WeeklyView: View {
     @State private var showProfileEdit = false
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                AppTheme.navy900.ignoresSafeArea()
-
-                List {
-                    // === Progress strip (matches Daily placement/style) ===
-                    Section {
-                        VStack(spacing: 8) {
-                            ProgressView(value: weeklyProgress)
-                                .tint(AppTheme.appGreen)
-                            Text("\(displayCoreTotal) / \(weeklyTotalCap) completed this week")
-                                .frame(maxWidth: .infinity)
-                                .multilineTextAlignment(.center)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppTheme.textPrimary)
-                        }
-                        .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
-                    }
-                    .listRowBackground(AppTheme.surface)
-
-                    // === Wins / Losses ===
-                    weeklySection(
-                        title: "Wins / Losses",
-                        countText: nil,
-                        subtitle: "",
-                        text: $winsLosses
-                    )
-
-                    // === Physiology ===
-                    weeklySection(
-                        title: "Physiology",
-                        countText: "\(physCount)/\(perPillarCap)",
-                        subtitle: "   The body is the universal address of your existence",
-                        text: $phys
-                    )
-
-                    // === Piety ===
-                    weeklySection(
-                        title: "Piety",
-                        countText: "\(pietyCount)/\(perPillarCap)",
-                        subtitle: "   Using mystery & awe as the spirit speaks for the soul",
-                        text: $prayer
-                    )
-
-                    // === People ===
-                    weeklySection(
-                        title: "People",
-                        countText: "\(peopleCount)/\(perPillarCap)",
-                        subtitle: "   Team Human: herd animals who exist in each other",
-                        text: $people
-                    )
-
-                    // === Production ===
-                    weeklySection(
-                        title: "Production",
-                        countText: "\(prodCount)/\(perPillarCap)",
-                        subtitle: "   A man produces more than he consumes",
-                        text: $production
-                    )
-
-                    // === 🎯 This Week's One Thing Done? (checkbox on right) ===
-                    weeklyCarryoverSection(
-                        leadingEmoji: "🎯",
-                        title: "This Week’s One Thing Done?",
-                        text: $carryText,
-                        isDone: $carryDone
-                    )
-
-                    // === 🎯 One Thing for Next Week ===
-                    weeklySimpleSection(
-                        leadingEmoji: "🎯",
-                        title: "One Thing for Next Week",
-                        subtitle: "",
-                        text: $oneThingNextWeek
-                    )
-
-                    // === 📓 Extra Notes ===
-                    weeklySimpleSection(
-                        leadingEmoji: "📓",
-                        title: "Extra Notes",
-                        subtitle: "",
-                        text: $journalNotes
-                    )
-
-                    // === Share (outlined; not full width; bottom room) ===
-                    Section {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Spacer().frame(height: 6)
-                            Button(action: shareWeeklySummary) {
-                                Text("Share")
+        if !session.isPro {
+            // Free users see the Paywall card on Weekly
+            PaywallCardView(title: "Pro Feature")
+        } else {
+            NavigationStack {
+                ZStack {
+                    AppTheme.navy900.ignoresSafeArea()
+                    
+                    List {
+                        // === Progress strip (matches Daily placement/style) ===
+                        Section {
+                            VStack(spacing: 8) {
+                                ProgressView(value: weeklyProgress)
+                                    .tint(AppTheme.appGreen)
+                                Text("\(displayCoreTotal) / \(weeklyTotalCap) completed this week")
+                                    .frame(maxWidth: .infinity)
+                                    .multilineTextAlignment(.center)
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(AppTheme.textPrimary)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 10)
                             }
-                            .buttonStyle(.plain)
-                            .background(AppTheme.navy900)
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
-                            )
-                            .padding(.horizontal, 12)
-                            Spacer().frame(height: 2)
+                            .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
                         }
-                    }
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(AppTheme.navy900)
-
-                    // Bottom spacer so Share is fully tappable
-                    Section { Color.clear.frame(height: 56) }
+                        .listRowBackground(AppTheme.surface)
+                        
+                        // === Wins / Losses ===
+                        weeklySection(
+                            title: "Wins / Losses",
+                            countText: nil,
+                            subtitle: "",
+                            text: $winsLosses
+                        )
+                        
+                        // === Physiology ===
+                        weeklySection(
+                            title: "Physiology",
+                            countText: "\(physCount)/\(perPillarCap)",
+                            subtitle: "   The body is the universal address of your existence",
+                            text: $phys
+                        )
+                        
+                        // === Piety ===
+                        weeklySection(
+                            title: "Piety",
+                            countText: "\(pietyCount)/\(perPillarCap)",
+                            subtitle: "   Using mystery & awe as the spirit speaks for the soul",
+                            text: $prayer
+                        )
+                        
+                        // === People ===
+                        weeklySection(
+                            title: "People",
+                            countText: "\(peopleCount)/\(perPillarCap)",
+                            subtitle: "   Team Human: herd animals who exist in each other",
+                            text: $people
+                        )
+                        
+                        // === Production ===
+                        weeklySection(
+                            title: "Production",
+                            countText: "\(prodCount)/\(perPillarCap)",
+                            subtitle: "   A man produces more than he consumes",
+                            text: $production
+                        )
+                        
+                        // === 🎯 This Week's One Thing Done? (checkbox on right) ===
+                        weeklyCarryoverSection(
+                            leadingEmoji: "🎯",
+                            title: "This Week’s One Thing Done?",
+                            text: $carryText,
+                            isDone: $carryDone
+                        )
+                        
+                        // === 🎯 One Thing for Next Week ===
+                        weeklySimpleSection(
+                            leadingEmoji: "🎯",
+                            title: "One Thing for Next Week",
+                            subtitle: "",
+                            text: $oneThingNextWeek
+                        )
+                        
+                        // === 📓 Extra Notes ===
+                        weeklySimpleSection(
+                            leadingEmoji: "📓",
+                            title: "Extra Notes",
+                            subtitle: "",
+                            text: $journalNotes
+                        )
+                        
+                        // === Share (outlined; not full width; bottom room) ===
+                        Section {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Spacer().frame(height: 6)
+                                Button(action: shareWeeklySummary) {
+                                    Text("Share")
+                                        .foregroundStyle(AppTheme.textPrimary)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                }
+                                .buttonStyle(.plain)
+                                .background(AppTheme.navy900)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
+                                )
+                                .padding(.horizontal, 12)
+                                Spacer().frame(height: 2)
+                            }
+                        }
                         .listRowSeparator(.hidden)
                         .listRowBackground(AppTheme.navy900)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .scrollDismissesKeyboard(.interactively)
-                .modifier(CompactListTweaks())
-            }
-            // Tap outside to dismiss keyboard (matches Daily)
-            .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
-
-            // === Toolbar (standardized like Daily) ===
-            .toolbar {
-                // Left: Shield icon → FULL SCREEN cover
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { showShield = true }) {
-                        Image("four_ps")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 36, height: 36)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                            .padding(4)
-                            .offset(y: -2) // optical center
+                        
+                        // Bottom spacer so Share is fully tappable
+                        Section { Color.clear.frame(height: 56) }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(AppTheme.navy900)
                     }
-                    .accessibilityLabel("Open 4 Ps Shield")
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    .modifier(CompactListTweaks())
                 }
-
-                // Center: title + week key
-                ToolbarItem(placement: .principal) {
-                    VStack(spacing: 2) {
-                        HStack(spacing: 8) {
-                            Text("📅")
-                            Text("Weekly Check-In")
-                                .font(.headline.weight(.bold))
+                // Tap outside to dismiss keyboard (matches Daily)
+                .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
+                
+                // === Toolbar (standardized like Daily) ===
+                .toolbar {
+                    // Left: Shield icon → FULL SCREEN cover
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button(action: { showShield = true }) {
+                            Image("four_ps")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 36, height: 36)
+                                .clipShape(Circle())
+                                .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                                .padding(4)
+                                .offset(y: -2) // optical center
+                        }
+                        .accessibilityLabel("Open 4 Ps Shield")
+                    }
+                    
+                    // Center: title + week key
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 2) {
+                            HStack(spacing: 8) {
+                                Text("📅")
+                                Text("Weekly Check-In")
+                                    .font(.headline.weight(.bold))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                            }
+                            Text("Week: \(weekKey)")
+                                .font(.caption)
                                 .foregroundStyle(AppTheme.textPrimary)
-                        }
-                        Text("Week: \(weekKey)")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.textPrimary)
-                            .padding(.bottom, 6)
-                    }
-                }
-
-                // Right: avatar (32pt) → ProfileEditView
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Group {
-                        if let path = store.profile.photoPath,
-                           let ui = UIImage(contentsOfFile: path) {
-                            Image(uiImage: ui).resizable().scaledToFill()
-                        } else if UIImage(named: "ATMPic") != nil {
-                            Image("ATMPic").resizable().scaledToFill()
-                        } else {
-                            Image(systemName: "person.crop.circle.fill")
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, AppTheme.appGreen)
+                                .padding(.bottom, 6)
                         }
                     }
-                    .frame(width: 32, height: 32)                    // standardized size
-                    .clipShape(RoundedRectangle(cornerRadius: 8))    // standardized radius
-                    .offset(y: -2)                                    // optical center
-                    .onTapGesture { showProfileEdit = true }
-                    .accessibilityLabel("Profile")
+                    
+                    // Right: avatar (32pt) → ProfileEditView
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Group {
+                            if let path = store.profile.photoPath,
+                               let ui = UIImage(contentsOfFile: path) {
+                                Image(uiImage: ui).resizable().scaledToFill()
+                            } else if UIImage(named: "ATMPic") != nil {
+                                Image("ATMPic").resizable().scaledToFill()
+                            } else {
+                                Image(systemName: "person.crop.circle.fill")
+                                    .symbolRenderingMode(.palette)
+                                    .foregroundStyle(.white, AppTheme.appGreen)
+                            }
+                        }
+                        .frame(width: 32, height: 32)                    // standardized size
+                        .clipShape(RoundedRectangle(cornerRadius: 8))    // standardized radius
+                        .offset(y: -2)                                    // optical center
+                        .onTapGesture { showProfileEdit = true }
+                        .accessibilityLabel("Profile")
+                    }
                 }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(AppTheme.navy900, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
-
-            // Shield page (has its own Back)
-            .fullScreenCover(isPresented: $showShield) {
-                ShieldPage(imageName: "four_ps")
-            }
-            // Profile edit sheet
-            .sheet(isPresented: $showProfileEdit) {
-                ProfileEditView().environmentObject(store)
-            }
-            .task { hydrateFromStorage() }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-                flushAll()
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(AppTheme.navy900, for: .navigationBar)
+                .toolbarColorScheme(.dark, for: .navigationBar)
+                .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
+                
+                // Shield page (has its own Back)
+                .fullScreenCover(isPresented: $showShield) {
+                    ShieldPage(imageName: "four_ps")
+                }
+                // Profile edit sheet
+                .sheet(isPresented: $showProfileEdit) {
+                    ProfileEditView().environmentObject(store)
+                }
+                .task { hydrateFromStorage() }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                    flushAll()
+                }
             }
         }
     }

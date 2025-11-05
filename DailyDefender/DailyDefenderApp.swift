@@ -2,7 +2,12 @@ import SwiftUI
 
 @main
 struct DailyDefenderApp: App {
+    // Existing store
     @StateObject private var store = HabitStore()
+    // New: Firebase Auth + allowlist session
+    @StateObject private var session = SessionViewModel()
+
+    // Splash state
     @State private var showSplash = true
     @State private var rootOpacity: Double = 0   // Root starts hidden
 
@@ -35,8 +40,9 @@ struct DailyDefenderApp: App {
                 // Solid backdrop so there’s no flash between splash/root
                 AppTheme.navy900.ignoresSafeArea()
 
-                // Root is always underneath and fades in during the shield spin
-                RootView()
+                // Root is the auth gate (shows your real shell when allowed)
+                AuthGateView()
+                    .environmentObject(session)
                     .environmentObject(store)          // ✅ single shared store
                     .tint(AppTheme.appGreen)
                     .opacity(rootOpacity)
@@ -45,7 +51,7 @@ struct DailyDefenderApp: App {
                 if showSplash {
                     ShieldSplashView(
                         onRevealStart: {
-                            // start fading in RootView right as the spin begins
+                            // start fading in root right as the spin begins
                             rootOpacity = 1
                         },
                         onFinish: {

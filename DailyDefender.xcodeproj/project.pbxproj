@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		2F22A0662EB8DCDE00CD10C6 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 2F22A0652EB8DCDE00CD10C6 /* FirebaseAuth */; };
+		2F22A0682EB8DCDE00CD10C6 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 2F22A0672EB8DCDE00CD10C6 /* FirebaseFirestore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		2F78B0602E750315002F81F0 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -29,9 +34,22 @@
 		2F78B0692E750315002F81F0 /* DailyDefenderUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DailyDefenderUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		2F22A06A2EBAABD900CD10C6 /* Exceptions for "DailyDefender" folder in "DailyDefender" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 2F78B0502E750314002F81F0 /* DailyDefender */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		2F78B0532E750314002F81F0 /* DailyDefender */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				2F22A06A2EBAABD900CD10C6 /* Exceptions for "DailyDefender" folder in "DailyDefender" target */,
+			);
 			path = DailyDefender;
 			sourceTree = "<group>";
 		};
@@ -52,6 +70,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2F22A0662EB8DCDE00CD10C6 /* FirebaseAuth in Frameworks */,
+				2F22A0682EB8DCDE00CD10C6 /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +132,8 @@
 			);
 			name = DailyDefender;
 			packageProductDependencies = (
+				2F22A0652EB8DCDE00CD10C6 /* FirebaseAuth */,
+				2F22A0672EB8DCDE00CD10C6 /* FirebaseFirestore */,
 			);
 			productName = DailyDefender;
 			productReference = 2F78B0512E750314002F81F0 /* DailyDefender.app */;
@@ -195,6 +217,9 @@
 			);
 			mainGroup = 2F78B0482E750314002F81F0;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				2F22A0642EB8DCDE00CD10C6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 2F78B0522E750314002F81F0 /* Products */;
 			projectDirPath = "";
@@ -397,6 +422,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DailyDefender/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -436,6 +462,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = DailyDefender/Info.plist;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -593,6 +620,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2F22A0642EB8DCDE00CD10C6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2F22A0652EB8DCDE00CD10C6 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2F22A0642EB8DCDE00CD10C6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		2F22A0672EB8DCDE00CD10C6 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2F22A0642EB8DCDE00CD10C6 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 2F78B0492E750314002F81F0 /* Project object */;
 }

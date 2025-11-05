@@ -3,384 +3,266 @@ import PhotosUI
 
 struct ProfileEditView: View {
     @EnvironmentObject var store: HabitStore
+    @EnvironmentObject var session: SessionViewModel
     @Environment(\.dismiss) private var dismiss
-
-    // Picker + form state
-    @State private var showPicker = false
-    @State private var pickerItem: PhotosPickerItem? = nil
 
     @State private var name: String = ""
     @State private var email: String = ""
-    @State private var draftImage: UIImage? = nil
-    @State private var draftPhotoPath: String? = nil
-    @State private var errorText: String? = nil
+    @State private var draftPhoto: PhotosPickerItem?
+    @State private var draftPhotoData: Data?
+    @State private var isLoading = false
+    @State private var error: String?
+
     @State private var initialized = false
-
-    // Original snapshot (to detect changes / enable Save)
-    @State private var originalName: String = ""
-    @State private var originalEmail: String = ""
-    @State private var originalPhotoPath: String? = nil
-
-    // Toast
-    @State private var toastMessage: String?
-    @State private var showToast = false
-
-    // Focus — MUST be at struct scope
-    private enum Field: Hashable { case name, email }
-    @FocusState private var focusedField: Field?
-    @State private var didAutoFocus = false
-
-    // Shield (top-left) — static full-screen page
-    @State private var showShield = false
-
-    // Dirty detection
-    private var isPhotoDirty: Bool {
-        if draftImage != nil { return true }
-        return draftPhotoPath != originalPhotoPath
-    }
-    private var isDirty: Bool {
-        name.trimmingCharacters(in: .whitespacesAndNewlines) != originalName.trimmingCharacters(in: .whitespacesAndNewlines)
-        || email.trimmingCharacters(in: .whitespacesAndNewlines) != originalEmail.trimmingCharacters(in: .whitespacesAndNewlines)
-        || isPhotoDirty
-    }
+    @State private var showChangePwd = false
+    @State private var sendingReset = false
+    @State private var resetMessage: String?
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppTheme.navy900.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 20) {
 
-                ScrollView {
-                    VStack(spacing: 16) {
-
-                        // Avatar picker
-                        Button { showPicker = true } label: {
-                            AvatarChooser(image: currentAvatarImage, label: "Change Photo")
-                        }
-                        .buttonStyle(.plain)
-                        .photosPicker(isPresented: $showPicker, selection: $pickerItem, matching: .images)
-                        .onChange(of: pickerItem) { newItem in
-                            guard let newItem else { return }
-                            Task {
-                                if let data = try? await newItem.loadTransferable(type: Data.self),
-                                   let img = UIImage(data: data) {
-                                    draftImage = img.scaledDownIfNeeded(maxDimension: 1600)
-                                    draftPhotoPath = nil
-                                }
+                    // --- Avatar picker ---
+                    VStack(spacing: 8) {
+                        ZStack {
+                            if let data = draftPhotoData, let img = UIImage(data: data) {
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 96, height: 96)
+                                    .clipShape(Circle())
+                            } else if let path = store.profile.photoPath,
+                                      let ui = UIImage(contentsOfFile: path) {
+                                Image(uiImage: ui)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 96, height: 96)
+                                    .clipShape(Circle())
+                            } else {
+                                Circle()
+                                    .fill(Color.white.opacity(0.1))
+                                    .frame(width: 96, height: 96)
+                                    .overlay(
+                                        Text(initials(from: name))
+                                            .font(.title.bold())
+                                    )
                             }
                         }
 
-                        // Name
-                        LabeledField(title: "Name") {
-                            TextField("Your name", text: $name)
-                                .textContentType(.name)
-                                .textInputAutocapitalization(.words)
-                                .autocorrectionDisabled(false)
-                                .submitLabel(.done)
-                                .focused($focusedField, equals: .name)
-                                .padding(12)
-                                .background(AppTheme.surfaceUI, in: RoundedRectangle(cornerRadius: 12))
-                                .foregroundStyle(AppTheme.textPrimary)
-                                .contentShape(Rectangle())
-                                .onTapGesture { focusedField = .name }
+                        PhotosPicker(selection: $draftPhoto, matching: .images, photoLibrary: .shared()) {
+                            Text("Tap the circle to change photo")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
+                        .disabled(isLoading)
+                    }
 
-                        // Email
-                        LabeledField(title: "Email") {
-                            TextField("you@domain.com", text: $email)
-                                .keyboardType(.emailAddress)
-                                .textContentType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled(true)
-                                .submitLabel(.done)
-                                .focused($focusedField, equals: .email)
-                                .padding(12)
-                                .background(AppTheme.surfaceUI, in: RoundedRectangle(cornerRadius: 12))
-                                .foregroundStyle(AppTheme.textPrimary)
-                                .contentShape(Rectangle())
-                                .onTapGesture { focusedField = .email }
-                                .onSubmit { saveProfile() }
+                    // --- Name ---
+                    TextField("Name", text: $name)
+                        .textInputAutocapitalization(.words)
+                        .autocorrectionDisabled()
+                        .padding(12)
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(.secondary))
+                        .disabled(isLoading)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Account email")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(email.isEmpty ? "—" : email)
+                            .font(.body)
+                            .foregroundStyle(.secondary)      // ← use the same .secondary as the label
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 6)
+                            .accessibilityLabel("Account email \(email)")
+                    }
+                    // Error (if any)
+                    if let e = error, !e.isEmpty {
+                        Text(e)
+                            .foregroundStyle(.red)
+                            .font(.footnote)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+
+                    // --- Save Button ---
+                    Button(action: saveProfile) {
+                        if isLoading {
+                            HStack { ProgressView().scaleEffect(0.8); Text("Saving…") }
+                        } else {
+                            Text("Save Changes")
                         }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .disabled(isLoading)
+                    .padding(.top, 8)
 
-                        if let err = errorText {
-                            Text(err)
+                    // --- Change Password (collapsible, Android-style affordance) ---
+                    DisclosureGroup(isExpanded: $showChangePwd) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("We’ll email a secure password reset link to:")
                                 .font(.footnote)
-                                .foregroundStyle(.red)
-                        }
+                                .foregroundStyle(.secondary)
 
-                        HStack(spacing: 12) {
-                            Button(role: .cancel) { dismiss() } label: {
-                                Text("Cancel").frame(maxWidth: .infinity)
+                            Text(email.isEmpty ? "—" : email)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(AppTheme.textPrimary)
+
+                            if let msg = resetMessage, !msg.isEmpty {
+                                Text(msg)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Button {
+                                Task {
+                                    await sendReset()
+                                }
+                            } label: {
+                                if sendingReset {
+                                    HStack { ProgressView().scaleEffect(0.8); Text("Sending…") }
+                                } else {
+                                    Text("Send Password Reset Email")
+                                }
                             }
                             .buttonStyle(.bordered)
-                            .tint(.white.opacity(0.9))
-
-                            Button { saveProfile() } label: {
-                                Text(isDirty ? "Save Changes" : "No Changes")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(isDirty ? AppTheme.appGreen : .gray.opacity(0.6))
-                            .foregroundStyle(.white)
-                            .disabled(!isDirty)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .disabled(sendingReset || email.isEmpty)
                         }
-                        .padding(.top, 4)
+                        .padding(.top, 8)
+                    } label: {
+                        HStack {
+                            Text("Change Password")
+                                .font(.body.weight(.semibold))
+                            Spacer()
+                            Image(systemName: showChangePwd ? "chevron.down" : "chevron.right")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 6)
                     }
-                    .padding(16)
-                }
-                .scrollDismissesKeyboard(.immediately)
+                    .padding(.top, 8)
 
-                // Top Banner Toast overlay
-                .overlay(alignment: .top) {
-                    if showToast, let msg = toastMessage {
-                        BannerToast(message: msg)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                            .zIndex(10)
-                            .onAppear {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-                                    withAnimation { showToast = false }
-                                }
-                            }
-                            .padding(.top, 8)
-                            .allowsHitTesting(false)
-                    }
+                    Spacer(minLength: 24)
                 }
+                .padding(16)
             }
-            .ignoresSafeArea(.keyboard, edges: .bottom)
             .navigationTitle("Edit Profile")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(AppTheme.navy900, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                // Standardized top-left shield → opens static ShieldPage
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button(action: { showShield = true }) {
-                        Image("four_ps") // change per-page if needed
+                    Button(action: { dismiss() }) {
+                        Image("AppShieldSquare")
                             .resizable()
                             .scaledToFit()
                             .frame(width: 36, height: 36)
-                            .padding(4)
-                            .contentShape(Rectangle())
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
                     }
-                    .accessibilityLabel("Open Shield")
                 }
-            }
-        }
-        // Static shield page fullscreen (no video)
-        .fullScreenCover(isPresented: $showShield) {
-            ShieldPage(imageName: "four_ps") // swap PNG if this screen uses a different shield
-        }
-        // Mailchimp toasts from the Store (for email changes)
-        .onReceive(store.$lastMailchimpMessage.compactMap { $0 }) { msg in
-            hideKeyboard()
-            toastMessage = msg
-            withAnimation { showToast = true }
 
-            if shouldAdvance(after: msg) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-                    dismiss()
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    ProfileAvatarThumb(photoPath: store.profile.photoPath)
+                        .onTapGesture { dismiss() }
                 }
             }
         }
-        .onChange(of: showToast) { isShowing in
-            if isShowing { hideKeyboard() }
+        .task(id: draftPhoto) {
+            guard let item = draftPhoto, !isLoading else { return }
+            if let data = try? await item.loadTransferable(type: Data.self) {
+                draftPhotoData = data
+            }
         }
         .onAppear {
             if !initialized {
-                let p = store.profile
-                name = p.name
-                email = p.email
-                draftPhotoPath = p.photoPath
-                originalName = p.name
-                originalEmail = p.email
-                originalPhotoPath = p.photoPath
+                name = store.profile.name ?? ""
+                email = store.profile.email ?? ""
                 initialized = true
             }
-            // Auto-focus name once when view first appears
-            if !didAutoFocus {
-                didAutoFocus = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    focusedField = .name
-                }
-            }
         }
-    }
-
-    // MARK: - Helpers
-
-    private var currentAvatarImage: UIImage? {
-        if let img = draftImage { return img }
-        if let path = draftPhotoPath, let img = UIImage(contentsOfFile: path) { return img }
-        return nil
-    }
-
-    private func isValidEmail(_ s: String) -> Bool {
-        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        let regex = #"^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$"#
-        return NSPredicate(format: "SELF MATCHES[c] %@", regex).evaluate(with: t)
     }
 
     private func saveProfile() {
-        guard isDirty else { return }
+        guard !isLoading else { return }
 
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let e = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let emailChanged = originalEmail.caseInsensitiveCompare(e) != .orderedSame
+        let e = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
 
-        guard !n.isEmpty else {
-            errorText = "Please enter your name"
-            return
-        }
-        if emailChanged {
-            guard isValidEmail(e) else {
-                errorText = "Please enter a valid email"
-                hideKeyboard()
-                toastMessage = "Please enter a valid email"
-                withAnimation { showToast = true }
-                return
+        if n.isEmpty { error = "Please enter your name"; return }
+        if !isValidEmail(e) { error = "Please enter a valid email"; return }
+
+        error = nil
+        isLoading = true
+
+        Task {
+            var finalPhotoPath: String? = store.profile.photoPath
+
+            if let data = draftPhotoData {
+                let filename = "profile_\(UUID().uuidString).jpg"
+                let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent(filename)
+                try? data.write(to: url)
+                finalPhotoPath = url.path
             }
+
+            store.saveProfile(name: n, email: e, photoPath: finalPhotoPath, isRegistered: true)
+            await session.runSeedIfNeeded()
+            await session.refreshEntitlements()
+
+            isLoading = false
+            dismiss()
         }
-        errorText = nil
-
-        // Persist picked image if any
-        var finalPath: String? = draftPhotoPath
-        if let img = draftImage, let data = img.jpegData(compressionQuality: 0.9) {
-            let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("profile_\(UUID().uuidString).jpg")
-            do { try data.write(to: url, options: .atomic); finalPath = url.path } catch { /* keep old */ }
-        }
-
-        // Save locally (keep current registration flag).
-        let wasRegistered = store.profile.isRegistered
-        store.saveProfile(name: n, email: e, photoPath: finalPath, isRegistered: wasRegistered)
-
-        hideKeyboard()
-
-        // If email changed and non-empty, wait for Mailchimp toast (onReceive).
-        if emailChanged && !e.isEmpty {
-            // noop here; dismissal handled after MC success/pending.
-        } else {
-            // Name/photo-only change OR email unchanged: quick confirm + dismiss.
-            toastMessage = "Saved."
-            withAnimation { showToast = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                dismiss()
-            }
-        }
-
-        // Refresh "original" snapshot so button disables after a successful save
-        originalName = n
-        originalEmail = e
-        originalPhotoPath = finalPath
-        draftImage = nil
     }
 
-    /// Decide if Mailchimp message is "good enough" to advance.
-    private func shouldAdvance(after message: String) -> Bool {
-        let lower = message.lowercased()
-        let okHints = [
-            "subscribed","already on the list","already subscribed",
-            "subscription confirmed","successfully subscribed",
-            "thank you for subscribing","check your email","almost finished"
-        ]
-        let errorHints = [
-            "invalid","failed","couldn’t","couldn't","try again",
-            "too many attempts","network error"
-        ]
-        if errorHints.contains(where: { lower.contains($0) }) { return false }
-        if okHints.contains(where: { lower.contains($0) }) { return true }
-        return true
+    private func sendReset() async {
+        guard !email.isEmpty else { return }
+        sendingReset = true
+        resetMessage = nil
+        do {
+            try await session.sendPasswordReset(to: email)
+            resetMessage = "Password reset email sent."
+        } catch {
+            resetMessage = "Could not send reset email."
+        }
+        sendingReset = false
+    }
+
+    private func isValidEmail(_ s: String) -> Bool {
+        return s.contains("@") && s.contains(".") && !s.hasPrefix("@") && !s.hasSuffix("@")
+    }
+
+    private func initials(from name: String) -> String {
+        let parts = name.split(separator: " ")
+        let first = parts.first?.first.map(String.init) ?? "D"
+        let second = parts.dropFirst().first?.first.map(String.init) ?? "D"
+        return first + second
     }
 }
 
-// MARK: - Small subviews (kept tiny to help the compiler)
+// MARK: - Compact Avatar (compiler-friendly)
+private struct ProfileAvatarThumb: View {
+    let photoPath: String?
 
-private struct AvatarChooser: View {
-    let image: UIImage?
-    let label: String
-    var body: some View {
-        ZStack {
-            AvatarCircle(image: image, size: 120)
-            Circle()
-                .stroke(AppTheme.divider, lineWidth: 1)
-                .frame(width: 120, height: 120)
-            VStack {
-                Spacer()
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .padding(.bottom, 6)
-            }
-            .frame(width: 120, height: 120)
-        }
-    }
-}
-
-private struct LabeledField<Content: View>: View {
-    let title: String
-    @ViewBuilder var content: () -> Content
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.subheadline)
-                .foregroundStyle(AppTheme.textSecondary)
-            content()
-        }
-    }
-}
-
-private struct BannerToast: View {
-    let message: String
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "info.circle.fill")
-            Text(message)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(2)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(AppTheme.surfaceUI)
-        .foregroundStyle(AppTheme.textPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .shadow(radius: 6)
-        .padding(.horizontal, 16)
-    }
-}
-
-// Reuse avatar circle + scaler locally
-private struct AvatarCircle: View {
-    let image: UIImage?
-    let size: CGFloat
-    var body: some View {
+    private var avatarImage: some View {
         Group {
-            if let img = image {
-                Image(uiImage: img).resizable().scaledToFill()
+            if let path = photoPath, let ui = UIImage(contentsOfFile: path) {
+                Image(uiImage: ui).resizable().scaledToFill()
             } else if UIImage(named: "ATMPic") != nil {
                 Image("ATMPic").resizable().scaledToFill()
             } else {
                 Image(systemName: "person.crop.circle.fill")
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(.white, AppTheme.appGreen)
-                    .font(.system(size: size * 0.55))
-                    .frame(width: size, height: size)
             }
         }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
     }
-}
 
-private extension UIImage {
-    func scaledDownIfNeeded(maxDimension: CGFloat) -> UIImage {
-        let w = size.width, h = size.height
-        let maxSide = max(w, h)
-        guard maxSide > maxDimension else { return self }
-        let scale = maxDimension / maxSide
-        let newSize = CGSize(width: w * scale, height: h * scale)
-        let renderer = UIGraphicsImageRenderer(size: newSize)
-        return renderer.image { _ in
-            self.draw(in: CGRect(origin: .zero, size: newSize))
-        }
+    var body: some View {
+        avatarImage
+            .frame(width: 32, height: 32)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .offset(y: -2)
+            .accessibilityLabel("Profile")
     }
 }
