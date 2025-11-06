@@ -5,11 +5,11 @@ struct JournalHomeView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
     @ObservedObject private var journalStore = JournalMemoryStore.shared   // temp in-memory demo store
-    
+
     // Header actions
     @State private var showJournalShield = false
     @State private var showProfileEdit = false
-    
+
     // Navigation
     private enum JournalRoute: Hashable {
         case freeFlowNew
@@ -17,16 +17,16 @@ struct JournalHomeView: View {
         case search
     }
     @State private var path: [JournalRoute] = []
-    
+
     // Optional external callbacks
     var onFreeFlow: () -> Void = {}
     var onGratitude: () -> Void = {}
     var onCageTheWolf: () -> Void = {}
     var onTenR: () -> Void = {}
     var onSearch: () -> Void = {}
-    
+
     private let journalShieldAsset = "AppShieldSquare"
-    
+
     var body: some View {
         if !session.isPro {
             PaywallCardView(title: "Pro Feature")
@@ -34,30 +34,30 @@ struct JournalHomeView: View {
             NavigationStack(path: $path) {
                 ZStack {
                     AppTheme.navy900.ignoresSafeArea()
-                    
+
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
                             // --- Section: New Journal ---
                             SectionHeaderCustom(title: "New Journal", emoji: "📒")
-                            
+
                             // FREE FLOW — navigate to new editor
                             JournalCardRow(title: "Free Flow", emoji: "📓") {
                                 path.append(.freeFlowNew)
                             }
-                            
+
                             // Placeholders (to wire later)
                             JournalCardRow(title: "Gratitude", emoji: "🙏", action: onGratitude)
                             JournalCardRow(title: "Cage The Wolf", emoji: "🐺", action: onCageTheWolf)
                             JournalCardRow(title: "10R Process", emoji: "📝", action: onTenR)
-                            
+
                             // --- Section: Library ---
                             SectionHeaderCustom(title: "Journal Library", emoji: "📚")
-                            
+
                             // Search — navigate to Library Search screen (keeps system back arrow)
                             JournalCardRow(title: "Journal Library Search", emoji: "🔍") {
                                 path.append(.search)
                             }
-                            
+
                             Spacer(minLength: 56)
                         }
                         .padding(.horizontal, 16)
@@ -81,7 +81,7 @@ struct JournalHomeView: View {
                         }
                         .accessibilityLabel("Open Journal shield")
                     }
-                    
+
                     // CENTER — Title
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 6) {
@@ -91,7 +91,7 @@ struct JournalHomeView: View {
                         }
                         .padding(.bottom, 10)
                     }
-                    
+
                     // RIGHT — Profile avatar
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Group {
@@ -118,12 +118,12 @@ struct JournalHomeView: View {
                 .toolbarBackground(.visible, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
                 .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
-                
+
                 // 🔔 Jump back to JournalHome when footer Journal is re-tapped
                 .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
                     path = []   // pop to root of Journal stack
                 }
-                
+
                 // Shield full-screen
                 .fullScreenCover(isPresented: $showJournalShield) {
                     ShieldPage(
@@ -132,12 +132,12 @@ struct JournalHomeView: View {
                                     : "AppShieldSquare")
                     )
                 }
-                
+
                 // Profile sheet
                 .sheet(isPresented: $showProfileEdit) {
                     ProfileEditView().environmentObject(store)
                 }
-                
+
                 // === Destination(s) ===
                 .navigationDestination(for: JournalRoute.self) { route in
                     switch route {
@@ -158,7 +158,7 @@ struct JournalHomeView: View {
                         .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
                             dismiss()
                         }
-                        
+
                     case .freeFlowExisting(let entry):
                         FreeFlowEditorView(
                             initialTitle: entry.title,
@@ -184,7 +184,7 @@ struct JournalHomeView: View {
                         .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
                             dismiss()
                         }
-                        
+
                     case .search:
                         JournalLibrarySearchView(
                             allEntries: journalStore.entries,
@@ -204,61 +204,59 @@ struct JournalHomeView: View {
             }
         }
     }
-    
-    // MARK: - Section Header
-    
-    private struct SectionHeaderCustom: View {
-        let title: String
-        let emoji: String
-        var body: some View {
-            HStack(spacing: 10) {
-                Text(emoji)
-                    .font(.system(size: 22))
-                Text(title)
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(AppTheme.textPrimary)
-                Spacer()
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 4)
-            .padding(.bottom, 2)
+}
+
+// MARK: - Section Header
+private struct SectionHeaderCustom: View {
+    let title: String
+    let emoji: String
+    var body: some View {
+        HStack(spacing: 10) {
+            Text(emoji)
+                .font(.system(size: 22))
+            Text(title)
+                .font(.title3.weight(.semibold))
+                .foregroundColor(AppTheme.textPrimary)
+            Spacer()
         }
+        .padding(.horizontal, 4)
+        .padding(.top, 4)
+        .padding(.bottom, 2)
     }
-    
-    // MARK: - Journal Card Row
-    
-    private struct JournalCardRow: View {
-        let title: String
-        let emoji: String
-        let action: () -> Void
-        
-        var body: some View {
-            Button(action: action) {
-                HStack(alignment: .center, spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(AppTheme.appGreen.opacity(0.16))
-                            .frame(width: 40, height: 40)
-                        Text(emoji)
-                            .font(.system(size: 20))
-                    }
-                    
-                    Text(title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                    
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(AppTheme.textSecondary)
+}
+
+// MARK: - Journal Card Row
+private struct JournalCardRow: View {
+    let title: String
+    let emoji: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .center, spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.appGreen.opacity(0.16))
+                        .frame(width: 40, height: 40)
+                    Text(emoji)
+                        .font(.system(size: 20))
                 }
-                .padding(14)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(AppTheme.surfaceUI)
-                        .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
-                )
+
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(AppTheme.textSecondary)
             }
-            .buttonStyle(.plain)
+            .padding(14)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(AppTheme.surfaceUI)
+                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+            )
         }
+        .buttonStyle(.plain)
     }
 }

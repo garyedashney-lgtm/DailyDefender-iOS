@@ -12,7 +12,16 @@ struct ShieldSplashView: View {
 
     var body: some View {
         ZStack {
-            AppTheme.navy900.ignoresSafeArea()
+            // Darker branded background with subtle gradient glow
+            LinearGradient(
+                colors: [
+                    AppTheme.navy900.darker(by: 0.25),
+                    AppTheme.navy900
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
             Image("AppShieldSquare")
                 .resizable()
@@ -23,7 +32,7 @@ struct ShieldSplashView: View {
                 .opacity(opacity)
                 .scaleEffect(scale)
                 .rotationEffect(rotation)
-                .shadow(color: .black.opacity(0.25), radius: 24, x: 0, y: 14)
+                .shadow(color: .black.opacity(0.35), radius: 28, x: 0, y: 16)
         }
         .onAppear {
             // 1) Fade in + subtle pop
@@ -32,7 +41,7 @@ struct ShieldSplashView: View {
                 scale = 1.0
             }
 
-            // 2) Proud still: hold the full shield for ~2.5s
+            // 2) Hold the full shield for ~2.5s
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 // 3) Begin reveal: tell the app to start fading in RootView
                 onRevealStart?()
@@ -50,5 +59,15 @@ struct ShieldSplashView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Darken helper for AppTheme colors
+private extension Color {
+    func darker(by amount: CGFloat) -> Color {
+        let uiColor = UIColor(self)
+        var hue: CGFloat = 0, sat: CGFloat = 0, bri: CGFloat = 0, alpha: CGFloat = 0
+        uiColor.getHue(&hue, saturation: &sat, brightness: &bri, alpha: &alpha)
+        return Color(hue: hue, saturation: sat, brightness: max(bri - amount, 0), opacity: Double(alpha))
     }
 }

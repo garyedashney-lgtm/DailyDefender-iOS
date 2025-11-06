@@ -2,10 +2,11 @@ import SwiftUI
 
 struct MoreView: View {
     @EnvironmentObject var store: HabitStore
+    @EnvironmentObject var session: SessionViewModel   // ← 1) add
 
     // Header actions
     @State private var showMoreShield = false
-    @State private var showProfileEdit = false
+    @State private var goProfileEdit = false           // ← 2) add
 
     private let moreShieldAsset = "AppShieldSquare"
 
@@ -34,6 +35,15 @@ struct MoreView: View {
                     .padding(.top, 12)
                 }
             }
+
+            // 🔗 Hidden push to ProfileEdit keeps footer visible
+            NavigationLink("", isActive: $goProfileEdit) {
+                ProfileEditView()
+                    .environmentObject(store)
+                    .environmentObject(session)
+            }
+            .hidden()
+
             // === Standardized toolbar (same as Daily/Weekly/Goals) ===
             .toolbar {
                 // LEFT — Shield icon → FULL SCREEN cover to ShieldPage
@@ -69,7 +79,7 @@ struct MoreView: View {
                     .padding(.bottom, 10) // space at bottom of header itself
                 }
 
-                // RIGHT — Profile avatar → ProfileEditView sheet
+                // RIGHT — Profile avatar → PUSH (not sheet)
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
                         if let path = store.profile.photoPath,
@@ -86,7 +96,7 @@ struct MoreView: View {
                     .frame(width: 32, height: 32)                    // standardized size
                     .clipShape(RoundedRectangle(cornerRadius: 8))    // standardized radius
                     .offset(y: -2)                                    // optical center
-                    .onTapGesture { showProfileEdit = true }
+                    .onTapGesture { goProfileEdit = true }            // ← 3) push
                     .accessibilityLabel("Profile")
                 }
             }
@@ -101,11 +111,6 @@ struct MoreView: View {
                 ShieldPage(
                     imageName: (UIImage(named: moreShieldAsset) != nil ? moreShieldAsset : "AppShieldSquare")
                 )
-            }
-
-            // Profile sheet
-            .sheet(isPresented: $showProfileEdit) {
-                ProfileEditView().environmentObject(store)
             }
         }
     }

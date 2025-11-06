@@ -3,11 +3,11 @@ import SwiftUI
 struct GoalsView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
-    
+
     // Header actions
     @State private var showGoalsShield = false
     @State private var showProfileEdit = false
-    
+
     // Meteorological season → emoji
     private var seasonEmoji: String {
         let m = Calendar.current.component(.month, from: Date())
@@ -18,10 +18,10 @@ struct GoalsView: View {
         default:         return "🍂" // Fall (9,10,11)
         }
     }
-    
+
     // Shield asset for this page
     private let goalsShieldAsset = "identityncrisis"
-    
+
     var body: some View {
         if !session.isPro {
             PaywallCardView(title: "Pro Feature")
@@ -29,10 +29,10 @@ struct GoalsView: View {
             NavigationStack {
                 ZStack {
                     AppTheme.navy900.ignoresSafeArea()
-                    
+
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
-                            
+
                             // Monthly Goals
                             NavigationLink {
                                 MonthlyGoalsView().environmentObject(store)
@@ -44,7 +44,7 @@ struct GoalsView: View {
                                 )
                             }
                             .buttonStyle(.plain)
-                            
+
                             // Seasonal Goals
                             NavigationLink {
                                 SeasonsGoalsView().environmentObject(store)
@@ -56,14 +56,14 @@ struct GoalsView: View {
                                 )
                             }
                             .buttonStyle(.plain)
-                            
+
                             Spacer(minLength: 56) // keep clear of global footer
                         }
                         .padding(.horizontal, 16)
                         .padding(.top, 12)
                     }
                 }
-                
+
                 // === Standardized toolbar (matches Daily/Weekly) ===
                 .toolbar {
                     // LEFT — Shield icon → FULL SCREEN cover to ShieldPage
@@ -81,7 +81,7 @@ struct GoalsView: View {
                         }
                         .accessibilityLabel("Open page shield")
                     }
-                    
+
                     // CENTER — Title + subtitle
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 6) {
@@ -98,7 +98,7 @@ struct GoalsView: View {
                         }
                         .padding(.bottom, 10) // space at bottom of header itself
                     }
-                    
+
                     // RIGHT — Profile avatar → ProfileEditView sheet
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Group {
@@ -125,14 +125,14 @@ struct GoalsView: View {
                 .toolbarBackground(.visible, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
                 .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
-                
+
                 // Shield full-screen (uses identityncrisis; falls back if missing)
                 .fullScreenCover(isPresented: $showGoalsShield) {
                     ShieldPage(
                         imageName: (UIImage(named: goalsShieldAsset) != nil ? goalsShieldAsset : "AppShieldSquare")
                     )
                 }
-                
+
                 // Profile sheet
                 .sheet(isPresented: $showProfileEdit) {
                     ProfileEditView().environmentObject(store)
@@ -140,68 +140,41 @@ struct GoalsView: View {
             }
         }
     }
-    
-    // MARK: - Card (no button; wrap with NavigationLink)
-    private struct GoalsCardRow: View {
-        let title: String
-        let subtitle: String
-        let emoji: String
-        
-        var body: some View {
-            HStack(alignment: .center, spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.appGreen.opacity(0.16))
-                        .frame(width: 40, height: 40)
-                    Text(emoji)
-                        .font(.system(size: 20))
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                    Text(subtitle)
-                        .font(.system(size: 13))
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(AppTheme.textSecondary)
-            }
-            .padding(14)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(AppTheme.surfaceUI)
-                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
-            )
-        }
-    }
-    
-    // MARK: - Temporary placeholders (replace with your real views)
-    private struct MonthlyGoalsPlaceholder: View {
-        var body: some View {
+}
+
+// MARK: - Card (no button; wrap with NavigationLink)
+private struct GoalsCardRow: View {
+    let title: String
+    let subtitle: String
+    let emoji: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 12) {
             ZStack {
-                AppTheme.navy900.ignoresSafeArea()
-                Text("Monthly Goals — Coming Soon")
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .padding()
+                Circle()
+                    .fill(AppTheme.appGreen.opacity(0.16))
+                    .frame(width: 40, height: 40)
+                Text(emoji)
+                    .font(.system(size: 20))
             }
-            .navigationTitle("Monthly Goals")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-    
-    private struct SeasonsGoalsPlaceholder: View {
-        var body: some View {
-            ZStack {
-                AppTheme.navy900.ignoresSafeArea()
-                Text("Seasonal Goals — Coming Soon")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text(subtitle)
+                    .font(.system(size: 13))
                     .foregroundStyle(AppTheme.textSecondary)
-                    .padding()
             }
-            .navigationTitle("Seasonal Goals")
-            .navigationBarTitleDisplayMode(.inline)
+            Spacer()
+            Image(systemName: "chevron.right")
+                .foregroundStyle(AppTheme.textSecondary)
         }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(AppTheme.surfaceUI)
+                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+        )
     }
 }

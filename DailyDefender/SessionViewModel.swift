@@ -11,10 +11,13 @@ final class SessionViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private var userListener: ListenerRegistration?    // live pro listener
-    private var db: Firestore { FirebaseService.shared.db }
+
+    // ✅ Expose Firestore for read-only use elsewhere (RegistrationView, etc.)
+    var db: Firestore { FirebaseService.shared.db }
 
     init() {
         FirebaseService.shared.configureIfNeeded()
+        print("APP BUNDLE:", Bundle.main.bundleIdentifier ?? "nil")
 
         Auth.auth().addStateDidChangeListener { [weak self] _, user in
             Task { @MainActor in
@@ -147,6 +150,38 @@ final class SessionViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Optional helpers you can call from views (for displayName/photoURL)
+
+    /// Update Firebase Auth profile fields (displayName/photoURL).
+    func updateAuthProfile(displayName: String?, photoURL: URL?) async {
+        guard let currentUser = Auth.auth().currentUser else { return }
+        do {
+            var changeReq = currentUser.createProfileChangeRequest()
+            if let displayName { changeReq.displayName = displayName }
+            if let photoURL { changeReq.photoURL = photoURL }
+            try await changeReq.commitChanges()
+            // Refresh local copy
+            self.user = Auth.auth().currentUser
+        } catch {
+            #if DEBUG
+            print("updateAuthProfile error: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    /// Merge some user fields into users/{uid} (safe idempotent write).
+    func mergeUserDoc(fields: [String: Any]) async {
+        guard let uid = user?.uid else { return }
+        do {
+            try await db.collection("users").document(uid).setData(fields, merge: true)
+        } catch {
+            #if DEBUG
+            print("mergeUserDoc error: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    // MARK: - Errors
     private func friendly(_ error: Error) -> String {
         let ns = error as NSError
         if let authErr = AuthErrorCode(_bridgedNSError: ns) {

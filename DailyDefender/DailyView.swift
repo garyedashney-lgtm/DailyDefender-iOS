@@ -5,6 +5,7 @@ import UIKit
 
 struct DailyView: View {
     @EnvironmentObject var store: HabitStore
+    @EnvironmentObject var session: SessionViewModel   // ← added
 
     // Celebration
     @State private var showConfetti = false
@@ -14,8 +15,8 @@ struct DailyView: View {
     @State private var showVictoryModal = false
 
     // Profile / Shields
-    @State private var showProfileEdit = false
     @State private var showFourPs = false
+    @State private var goProfileEdit = false          // ← push navigation flag
 
     // yyyy-MM-dd (for daily gating keys)
     private var todayString: String {
@@ -103,10 +104,19 @@ struct DailyView: View {
                         .transition(.opacity)
                 }
             }
+
+            // Hidden push link to Profile Edit (keeps footer visible)
+            NavigationLink("", isActive: $goProfileEdit) {
+                ProfileEditView()
+                    .environmentObject(store)
+                    .environmentObject(session)
+            }
+            .hidden()
+
             // Tap outside to dismiss keyboard cleanly
             .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
-            // ✅ All toolbar items must live inside ONE .toolbar { ... } block
+            // Toolbar
             .toolbar {
                 // LEFT — shield (4 Ps)
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -149,7 +159,7 @@ struct DailyView: View {
                     }
                 }
 
-                // RIGHT — profile avatar
+                // RIGHT — profile avatar → push ProfileEdit
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
                         if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
@@ -165,7 +175,7 @@ struct DailyView: View {
                     .frame(width: 32, height: 32)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .offset(y: -2) // optical center
-                    .onTapGesture { showProfileEdit = true }
+                    .onTapGesture { goProfileEdit = true }   // ← push instead of sheet
                     .accessibilityLabel("Profile")
                 }
             }
@@ -176,11 +186,7 @@ struct DailyView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-            // Full-screen covers & sheets follow...
-            .fullScreenCover(isPresented: $showFourPs) {
-                ShieldPage(imageName: "four_ps")
-            }
-            // Four Ps shield
+            // Four Ps shield (full screen)
             .fullScreenCover(isPresented: $showFourPs) {
                 ShieldPage(imageName: "four_ps")
             }
@@ -191,11 +197,6 @@ struct DailyView: View {
                     videoName: "youareamazingguy",
                     isPresented: $showVictoryModal
                 )
-            }
-
-            // Profile sheet
-            .sheet(isPresented: $showProfileEdit) {
-                ProfileEditView().environmentObject(store)
             }
 
             // Seed gating
@@ -233,8 +234,6 @@ struct DailyView: View {
         }
     }
 
-    // Inside DailyView.swift
-
     // MARK: - Pillar block
     @ViewBuilder
     private func pillarBlock(_ pillar: Pillar) -> some View {
@@ -248,9 +247,9 @@ struct DailyView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 CheckSquare(checked: checked) { store.toggle(pid) }
-                    .padding(.trailing, 6) // ✅ pull in a tad from screen edge
+                    .padding(.trailing, 6) // pull in a tad from screen edge
             }
-            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
@@ -259,7 +258,7 @@ struct DailyView: View {
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
@@ -269,7 +268,7 @@ struct DailyView: View {
                 placeholder: "Focused activity?",
                 onChange: { setPersistedFocus($0, for: pid) }
             )
-            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0)) // full width
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
         }
@@ -288,9 +287,9 @@ struct DailyView: View {
                     .font(.body.weight(.semibold))
                 Spacer()
                 CheckSquare(checked: checked) { store.toggle(todoId) }
-                    .padding(.trailing, 6) // ✅ same adjustment here
+                    .padding(.trailing, 6)
             }
-            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
@@ -299,7 +298,7 @@ struct DailyView: View {
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0)) // flush-left
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
@@ -309,11 +308,12 @@ struct DailyView: View {
                 placeholder: "What’s the next task?",
                 onChange: { setPersistedTodo($0) }
             )
-            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0)) // full width
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
         }
     }
+
     // MARK: - Persistence
     private func focusKey(_ pid: String) -> String { "focus_\(pid)" }
     private func persistedFocus(for pid: String) -> String {
@@ -394,12 +394,12 @@ private struct PlainNotesCard: View {
             CenteredTextView(
                 text: $textInternal,
                 onChanged: { onChange($0) },
-                targetSingleLineHeight: 46 // ✅ match WeeklyView exact centering
+                targetSingleLineHeight: 46
             )
             .frame(minHeight: 46)
             .background(Color.clear)
         }
-        .padding(.horizontal, 0) // full width
+        .padding(.horizontal, 0)
         .padding(.bottom, 4)
     }
 }
@@ -442,7 +442,7 @@ private struct CenteredTextView: UIViewRepresentable {
         let H: CGFloat = targetSingleLineHeight
         let base = max(0, (H - line) / 2)
 
-        // Match Weekly: slight bottom bias to look optically centered
+        // slight bottom bias to look optically centered
         let top = base.rounded(.toNearestOrEven)
         let bottom = (base + 2.0).rounded(.toNearestOrEven)
 
@@ -464,7 +464,6 @@ private struct CenteredTextView: UIViewRepresentable {
 }
 
 // Existing helpers
-
 private struct CompactListTweaks: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {

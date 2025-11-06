@@ -6,15 +6,19 @@ struct AuthGateView: View {
 
     var body: some View {
         Group {
-            if session.user != nil {
-                // ✅ Signed in → enter the app (Free by default; pro unlocks via Firestore)
-                RootView()
+            if (store.profile.isRegistered) && (session.user != nil) {
+                MainTabScaffoldView()
                     .environmentObject(store)
+                    .environmentObject(session)
             } else {
-                RegistrationView(onRegistered: {
-                    // no-op: SessionViewModel listener will flip user != nil
-                })
+                RegistrationView {
+                    Task {
+                        await session.runSeedIfNeeded()
+                        await session.refreshEntitlements()
+                    }
+                }
                 .environmentObject(store)
+                .environmentObject(session)
             }
         }
     }

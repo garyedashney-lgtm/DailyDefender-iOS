@@ -45,6 +45,8 @@ struct WeeklyView: View {
     private var pietyCount: Int  { min(pillarSaved.piety  + (store.completed.contains(pid(.Piety)) ? 1 : 0), perPillarCap) }
     private var peopleCount: Int { min(pillarSaved.people + (store.completed.contains(pid(.People)) ? 1 : 0), perPillarCap) }
     private var prodCount: Int   { min(pillarSaved.prod   + (store.completed.contains(pid(.Production)) ? 1 : 0), perPillarCap) }
+    
+    @State private var goProfileEdit = false
 
     // MARK: - Weekly Text State (persisted per week)
     @State private var winsLosses: String = ""
@@ -237,7 +239,7 @@ struct WeeklyView: View {
                         .frame(width: 32, height: 32)                    // standardized size
                         .clipShape(RoundedRectangle(cornerRadius: 8))    // standardized radius
                         .offset(y: -2)                                    // optical center
-                        .onTapGesture { showProfileEdit = true }
+                        .onTapGesture { goProfileEdit = true }
                         .accessibilityLabel("Profile")
                     }
                 }
@@ -258,6 +260,11 @@ struct WeeklyView: View {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                     flushAll()
                 }
+                NavigationLink("", isActive: $goProfileEdit) {
+                    ProfileEditView()
+                        .environmentObject(store)
+                        .environmentObject(session)
+                }.hidden()
             }
         }
     }
