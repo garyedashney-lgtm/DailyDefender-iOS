@@ -119,10 +119,6 @@ private func looksLikeSelfCareWriting(_ content: String) -> Bool {
     return content.range(of: #"(?m)^\s*Self\s*Care\s*Writing\s*—"#,
                          options: .regularExpression) != nil
 }
-private func looksLikeBlessingTally(_ content: String) -> Bool {
-    return content.range(of: #"(?s)Blessings?:?.{0,80}\n"#,
-                         options: .regularExpression) != nil
-}
 private func looksLikeCurrentStateSnapshot(_ title: String, _ content: String) -> Bool {
     let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
     if hasPrefixCI(t, "CSS:")
@@ -287,7 +283,7 @@ struct JournalLibrarySearchView: View {
                             )
                             .background(AppTheme.navy900.opacity(0.98))
                         }
-                        .padding(.bottom, footerH + safeBottom + 12) // ← lift further above footer
+                        .padding(.bottom, footerH + safeBottom + 12) // ← lifted above footer
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
@@ -462,6 +458,7 @@ private struct SortBar: View {
         .padding(.vertical, 4)
     }
 }
+
 private struct SelectionBar: View {
     let count: Int
     let allSelected: Bool
@@ -500,7 +497,7 @@ private struct ResultsList: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 10) {
+            LazyVStack(spacing: 8) { // tighter row spacing
                 ForEach(items) { e in
                     JournalRow(
                         entry: e,
@@ -607,7 +604,7 @@ private struct JournalRow: View {
         let type = classifyJournalType(entry)
 
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) { // tighter vertical spacing
                 // Top: Type pill + checkbox
                 HStack {
                     TypePillView(type: type)
@@ -618,10 +615,12 @@ private struct JournalRow: View {
                         Image(systemName: checked ? "checkmark.square.fill" : "square")
                             .symbolRenderingMode(.palette)
                             .foregroundStyle(
-                                checked ? .white : AppTheme.textPrimary,
+                                checked ? .white : AppTheme.textSecondary, // lighter outline
                                 checked ? AppTheme.appGreen : .clear
                             )
-                            .font(.title3)
+                            .font(.system(size: 24, weight: .medium)) // slimmer icon
+                            .frame(width: 34, height: 34)              // smaller tap box
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -645,32 +644,23 @@ private struct JournalRow: View {
                         .lineLimit(2)
                 }
             }
-            .padding(12)
+            .padding(.vertical, 8)   // tighter card padding
+            .padding(.horizontal, 10)
             .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(AppTheme.surfaceUI)
-                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.15), radius: 1, x: 0, y: 1) // softer shadow
             )
         }
         .buttonStyle(.plain)
     }
 }
 
+// Uniform, subdued pill color for ALL types (FREE style parity)
 private struct TypePillView: View {
     let type: JournalTypeIOS
     var body: some View {
-        let color: Color = {
-            switch type {
-            case .tenR: return AppTheme.appGreen
-            case .cage: return .teal
-            case .selfCare: return .pink
-            case .blessingTally: return .orange
-            case .gratitude: return .yellow
-            case .free: return AppTheme.textSecondary
-            case .css: return .blue
-            case .dvs: return .purple
-            }
-        }()
+        let color: Color = AppTheme.textSecondary
         let label = pillCode(type)
         return Text(label)
             .font(.caption2.weight(.semibold))
@@ -679,11 +669,11 @@ private struct TypePillView: View {
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(color.opacity(0.15))
+                    .fill(color.opacity(0.12))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(color.opacity(0.35), lineWidth: 1)
+                    .stroke(color.opacity(0.28), lineWidth: 1)
             )
     }
 }

@@ -13,7 +13,10 @@ struct JournalHomeView: View {
     // Navigation
     private enum JournalRoute: Hashable {
         case freeFlowNew
+        case gratitudeNew
         case freeFlowExisting(JournalEntryIOS)
+        case blessingTallyNew
+        case blessingTallyExisting(JournalEntryIOS)
         case search
     }
     @State private var path: [JournalRoute] = []
@@ -56,17 +59,21 @@ struct JournalHomeView: View {
                             JournalCardRow(
                                 title: "Gratitude",
                                 subtitle: "– Thanks!",
-                                emoji: "🙏",
-                                action: onGratitude
-                            )
+                                emoji: "🙏"
+                            ) {
+                                path.append(.gratitudeNew)
+                                onGratitude()
+                            }
 
                             // ✨ 3 Blessings — – Tally!
                             JournalCardRow(
                                 title: "3 Blessings",
                                 subtitle: "– Tally!",
-                                emoji: "✨",
-                                action: onBlessingTally
-                            )
+                                emoji: "✨"
+                            ) {
+                                path.append(.blessingTallyNew)
+                                onBlessingTally()
+                            }
 
                             // 🐺 Cage The Wolf — – Tempted?
                             JournalCardRow(
@@ -104,7 +111,7 @@ struct JournalHomeView: View {
                                 onSearch()
                             }
 
-                            // Helper row (accurate iOS copy)
+                            // Helper row
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.icloud")
                                     .foregroundStyle(AppTheme.appGreen)
@@ -200,12 +207,13 @@ struct JournalHomeView: View {
                 // === Destinations ===
                 .navigationDestination(for: JournalRoute.self) { route in
                     switch route {
+
                     case .freeFlowNew:
                         FreeFlowEditorView(
                             initialTitle: "",
                             initialBody: "",
                             initialCreatedAt: Date(),
-                            initialUpdatedAt: nil,  // nil → defaults to createdAt in the editor
+                            initialUpdatedAt: nil,
                             isEditingExisting: false,
                             onBack: { dismiss() },
                             onSave: { title, body, created in
@@ -224,7 +232,7 @@ struct JournalHomeView: View {
                             initialTitle: entry.title,
                             initialBody: entry.content,
                             initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
-                            initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000), // 👈 NEW
+                            initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
                             isEditingExisting: true,
                             onBack: { dismiss() },
                             onSave: { title, body, created in
@@ -246,13 +254,77 @@ struct JournalHomeView: View {
                             dismiss()
                         }
 
+                    case .blessingTallyNew:
+                        BlessingTallyEditorView(
+                            initialTitle: "3 Blessings",
+                            initialCreatedAt: Date(),
+                            initialAnswers: ("", "", ""), // keep your tuple seed; editor builds body internally
+                            isEditingExisting: false,
+                            onBack: { dismiss() },
+                            onSave: { title, body, created in
+                                // 'body' is already the combined 3B text from the editor
+                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                                dismiss()
+                            },
+                            onDelete: { }
+                        )
+                        .environmentObject(store)
+                        .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
+                            dismiss()
+                        }
+
+                    case .blessingTallyExisting(let entry):
+                        BlessingTallyEditorView(
+                            initialTitle: entry.title.isEmpty ? "3 Blessings" : entry.title,
+                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                            initialAnswers: answersTuple(from: entry.content),
+                            isEditingExisting: true,
+                            onBack: { dismiss() },
+                            onSave: { title, body, created in
+                                JournalMemoryStore.shared.updateEntry(
+                                    id: entry.id,
+                                    title: title,
+                                    body: body,
+                                    createdAt: created
+                                )
+                                dismiss()
+                            },
+                            onDelete: {
+                                JournalMemoryStore.shared.delete(ids: [entry.id])
+                                dismiss()
+                            }
+                        )
+                        .environmentObject(store)
+                        .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
+                            dismiss()
+                        }
+                        
+                    case .gratitudeNew:
+                        GratitudeEditorView(
+                            initialTitle: "Gratitude",
+                            initialBody: "",
+                            initialCreatedAt: Date(),
+                            initialUpdatedAt: Date(),
+                            isEditingExisting: false,
+                            onBack: { dismiss() },
+                            onSave: { title, body, created in
+                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                                dismiss()
+                            },
+                            onDelete: { }
+                        )
+                        .environmentObject(store)
+                        
                     case .search:
                         JournalLibrarySearchView(
                             allEntries: journalStore.entries,
                             onOpen: { tapped in
-                                // For now, route all opens to Free Flow editor.
-                                // (When Gratitude/CTW/10R/3BT/SCW editors are in, branch by type.)
-                                path.append(.freeFlowExisting(tapped))
+                                // Route to Blessing Tally editor if it matches; else Free Flow
+                                if looksLikeBlessingTallyLocal(tapped.content) {
+                                    path.append(.blessingTallyExisting(tapped))
+                                } else {
+                                    path.append(.freeFlowExisting(tapped))
+                                }
                             },
                             onDelete: { ids in JournalMemoryStore.shared.delete(ids: ids) }
                         )
@@ -265,6 +337,12 @@ struct JournalHomeView: View {
             }
         }
     }
+}
+
+// MARK: - Local detector used for routing from Library
+private func looksLikeBlessingTallyLocal(_ content: String) -> Bool {
+    let pattern = #"(?m)^\s*1\s*[—-]\s*What are three things from today that went well\.?"#
+    return content.range(of: pattern, options: .regularExpression) != nil
 }
 
 // MARK: - Section Header
@@ -332,4 +410,11 @@ private struct JournalCardRow: View {
         }
         .buttonStyle(.plain)
     }
+}
+private func answersTuple(from content: String) -> (String, String, String) {
+    let arr = parseBlessingTallyBody(content)
+    let a0 = arr.indices.contains(0) ? arr[0] : ""
+    let a1 = arr.indices.contains(1) ? arr[1] : ""
+    let a2 = arr.indices.contains(2) ? arr[2] : ""
+    return (a0, a1, a2)
 }
