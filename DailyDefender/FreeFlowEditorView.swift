@@ -62,6 +62,14 @@ private struct BodyCardView: View {
     @Binding var editorHeight: CGFloat
     var isEditing: Bool
     var systemPlaceholder: Color
+    var minLines: Int = 5   // 👈 new
+
+    private var minHeight: CGFloat {
+        // Use system body font line height × lines + padding
+        let lh = UIFont.preferredFont(forTextStyle: .body).lineHeight
+        // +20 approximates your inner/top-bottom padding inside the card
+        return ceil(lh * CGFloat(max(1, minLines))) + 20
+    }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -79,7 +87,8 @@ private struct BodyCardView: View {
                     calculatedHeight: $editorHeight,
                     isEditable: true
                 )
-                .frame(height: max(editorHeight, 46), alignment: .topLeading)
+                // 👇 ensure at least ~5 lines tall on first render
+                .frame(height: max(editorHeight, minHeight), alignment: .topLeading)
             } else {
                 Text(bodyText.isEmpty ? "—" : bodyText)
                     .font(.body)
@@ -94,7 +103,6 @@ private struct BodyCardView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
     }
 }
-
 // MARK: - FreeFlowEditorView
 struct FreeFlowEditorView: View {
     @EnvironmentObject var store: HabitStore
@@ -106,6 +114,7 @@ struct FreeFlowEditorView: View {
 
     // Entry state
     @State private var createdAt: Date
+    @State private var updatedAt: Date
     @State private var titleText: String
     @State private var bodyText: String
     @State private var isEditingExisting: Bool
@@ -130,12 +139,14 @@ struct FreeFlowEditorView: View {
         initialTitle: String = "",
         initialBody: String = "",
         initialCreatedAt: Date = Date(),
+        initialUpdatedAt: Date? = nil,   // 👈 NEW (defaults to createdAt when nil)
         isEditingExisting: Bool = false,
         onBack: @escaping () -> Void = {},
         onSave: @escaping (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in },
         onDelete: @escaping () -> Void = {}
     ) {
         _createdAt = State(initialValue: initialCreatedAt)
+        _updatedAt = State(initialValue: initialUpdatedAt ?? initialCreatedAt) // 👈 NEW
         _titleText = State(initialValue: initialTitle)
         _bodyText = State(initialValue: initialBody)
         _isEditingExisting = State(initialValue: isEditingExisting)
@@ -151,10 +162,18 @@ struct FreeFlowEditorView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text(dateLabel(createdAt))
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .padding(.top, 2)
+                    HStack(spacing: 8) {
+                        Text("Created \(dateLabel(createdAt))")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.textPrimary)
+                        Text("•")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.textSecondary)
+                        Text("Updated \(dateLabel(updatedAt))")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.textSecondary) // muted like Android's onSurfaceVariant
+                    }
+                    .padding(.top, 2)
 
                     // Title
                     TextField("Title", text: $titleText, axis: .vertical)
@@ -182,6 +201,7 @@ struct FreeFlowEditorView: View {
                                 isSaving = true
                                 dismissKeyboard()
                                 let trimmed = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                updatedAt = Date() // 👈 reflect the new update time in UI (store also updates)
                                 onSave(trimmed, bodyText, createdAt)
                                 dismiss()
                             } label: {

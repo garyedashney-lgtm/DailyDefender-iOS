@@ -139,7 +139,7 @@ struct RegistrationView: View {
                 .scrollContentBackground(.hidden) // let navy show through
             }
             .toolbar {
-                // LEFT — app shield (make both branches same type)
+                // LEFT — app shield
                 ToolbarItem(placement: .navigationBarLeading) {
                     Group {
                         if UIImage(named: "AppShieldSquare") != nil {
@@ -218,17 +218,23 @@ struct RegistrationView: View {
             let finalPhoto = photoUri
             store.saveProfile(name: n, email: e, photoPath: finalPhoto, isRegistered: true)
 
-            // ✅ Ensure Firestore user doc has at least display fields now (idempotent)
+            // Push name/photo to Auth + Firestore (your helpers)
+            await session.updateAuthProfile(displayName: n, photoURLString: finalPhoto)
+            await session.upsertUserDoc(name: n, email: e, photoURLString: finalPhoto)
+
+            // 🔧 Normalize Firestore field names: prefer "photoUrl", remove legacy "photoURL"
             if let uid = session.user?.uid {
                 let db = session.db
-                let lower = e.lowercased()
-                try? await db.collection("users").document(uid).setData([
-                    "email": e,
-                    "emailLower": lower,
-                    "displayName": n,
-                    "photoURL": finalPhoto ?? NSNull(),
-                    "updatedAt": FieldValue.serverTimestamp()
-                ], merge: true)
+                var merge: [String: Any] = ["updatedAt": FieldValue.serverTimestamp()]
+                if let finalPhoto {
+                    merge["photoUrl"] = finalPhoto   // ✅ canonical
+                } else {
+                    merge["photoUrl"] = FieldValue.delete()
+                }
+                try? await db.collection("users").document(uid).setData(merge, merge: true)
+                try? await db.collection("users").document(uid).updateData([
+                    "photoURL": FieldValue.delete()  // 🧹 remove legacy key if present
+                ])
             }
 
             // Seed/entitlements

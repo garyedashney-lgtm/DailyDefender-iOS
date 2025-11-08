@@ -4,7 +4,7 @@ struct JournalHomeView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
-    @ObservedObject private var journalStore = JournalMemoryStore.shared   // temp in-memory demo store
+    @ObservedObject private var journalStore = JournalMemoryStore.shared   // JSON-on-disk persistence
 
     // Header actions
     @State private var showJournalShield = false
@@ -18,11 +18,13 @@ struct JournalHomeView: View {
     }
     @State private var path: [JournalRoute] = []
 
-    // Optional external callbacks
+    // Optional external callbacks (wire as you build editors)
     var onFreeFlow: () -> Void = {}
     var onGratitude: () -> Void = {}
     var onCageTheWolf: () -> Void = {}
     var onTenR: () -> Void = {}
+    var onBlessingTally: () -> Void = {}
+    var onSelfCareWriting: () -> Void = {}
     var onSearch: () -> Void = {}
 
     private let journalShieldAsset = "AppShieldSquare"
@@ -40,23 +42,80 @@ struct JournalHomeView: View {
                             // --- Section: New Journal ---
                             SectionHeaderCustom(title: "New Journal", emoji: "📒")
 
-                            // FREE FLOW — navigate to new editor
-                            JournalCardRow(title: "Free Flow", emoji: "📓") {
+                            // 📓 Free Flow — – Talk!
+                            JournalCardRow(
+                                title: "Free Flow",
+                                subtitle: "– Talk!",
+                                emoji: "📓"
+                            ) {
                                 path.append(.freeFlowNew)
+                                onFreeFlow()
                             }
 
-                            // Placeholders (to wire later)
-                            JournalCardRow(title: "Gratitude", emoji: "🙏", action: onGratitude)
-                            JournalCardRow(title: "Cage The Wolf", emoji: "🐺", action: onCageTheWolf)
-                            JournalCardRow(title: "10R Process", emoji: "📝", action: onTenR)
+                            // 🙏 Gratitude — – Thanks!
+                            JournalCardRow(
+                                title: "Gratitude",
+                                subtitle: "– Thanks!",
+                                emoji: "🙏",
+                                action: onGratitude
+                            )
 
-                            // --- Section: Library ---
+                            // ✨ 3 Blessings — – Tally!
+                            JournalCardRow(
+                                title: "3 Blessings",
+                                subtitle: "– Tally!",
+                                emoji: "✨",
+                                action: onBlessingTally
+                            )
+
+                            // 🐺 Cage The Wolf — – Tempted?
+                            JournalCardRow(
+                                title: "Cage The Wolf",
+                                subtitle: "– Tempted?",
+                                emoji: "🐺",
+                                action: onCageTheWolf
+                            )
+
+                            // 📝 10R Process — – Triggered?
+                            JournalCardRow(
+                                title: "10R Process",
+                                subtitle: "– Triggered?",
+                                emoji: "📝",
+                                action: onTenR
+                            )
+
+                            // 🪞 Self Care Writing — – Traumatized?
+                            JournalCardRow(
+                                title: "Self Care Writing",
+                                subtitle: "– Traumatized?",
+                                emoji: "🪞",
+                                action: onSelfCareWriting
+                            )
+
+                            // --- Section: Journal Library ---
                             SectionHeaderCustom(title: "Journal Library", emoji: "📚")
 
-                            // Search — navigate to Library Search screen (keeps system back arrow)
-                            JournalCardRow(title: "Journal Library Search", emoji: "🔍") {
+                            // 🔍 Search
+                            JournalCardRow(
+                                title: "Journal Library Search",
+                                emoji: "🔍"
+                            ) {
                                 path.append(.search)
+                                onSearch()
                             }
+
+                            // Helper row (accurate iOS copy)
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.icloud")
+                                    .foregroundStyle(AppTheme.appGreen)
+                                    .font(.system(size: 14, weight: .semibold))
+                                Text("Your journals are saved on this device and included in iCloud backups.")
+                                    .font(.footnote)
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 6)
 
                             Spacer(minLength: 56)
                         }
@@ -66,7 +125,7 @@ struct JournalHomeView: View {
                 }
                 // === Toolbar/Header ===
                 .toolbar {
-                    // LEFT — Shield icon
+                    // LEFT — Brand / Shield icon
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: { showJournalShield = true }) {
                             (UIImage(named: journalShieldAsset) != nil
@@ -138,7 +197,7 @@ struct JournalHomeView: View {
                     ProfileEditView().environmentObject(store)
                 }
 
-                // === Destination(s) ===
+                // === Destinations ===
                 .navigationDestination(for: JournalRoute.self) { route in
                     switch route {
                     case .freeFlowNew:
@@ -146,6 +205,7 @@ struct JournalHomeView: View {
                             initialTitle: "",
                             initialBody: "",
                             initialCreatedAt: Date(),
+                            initialUpdatedAt: nil,  // nil → defaults to createdAt in the editor
                             isEditingExisting: false,
                             onBack: { dismiss() },
                             onSave: { title, body, created in
@@ -164,6 +224,7 @@ struct JournalHomeView: View {
                             initialTitle: entry.title,
                             initialBody: entry.content,
                             initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                            initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000), // 👈 NEW
                             isEditingExisting: true,
                             onBack: { dismiss() },
                             onSave: { title, body, created in
@@ -190,7 +251,7 @@ struct JournalHomeView: View {
                             allEntries: journalStore.entries,
                             onOpen: { tapped in
                                 // For now, route all opens to Free Flow editor.
-                                // (Once Gratitude/CTW/10R editors are in, branch by type.)
+                                // (When Gratitude/CTW/10R/3BT/SCW editors are in, branch by type.)
                                 path.append(.freeFlowExisting(tapped))
                             },
                             onDelete: { ids in JournalMemoryStore.shared.delete(ids: ids) }
@@ -228,6 +289,7 @@ private struct SectionHeaderCustom: View {
 // MARK: - Journal Card Row
 private struct JournalCardRow: View {
     let title: String
+    var subtitle: String? = nil
     let emoji: String
     let action: () -> Void
 
@@ -242,9 +304,20 @@ private struct JournalCardRow: View {
                         .font(.system(size: 20))
                 }
 
-                Text(title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(AppTheme.textPrimary)
+                // Inline title + subtitle (Android parity)
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .lineLimit(1)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.footnote.italic())
+                            .foregroundStyle(AppTheme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .layoutPriority(1)
 
                 Spacer()
                 Image(systemName: "chevron.right")

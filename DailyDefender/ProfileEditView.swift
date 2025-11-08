@@ -58,7 +58,7 @@ struct ProfileEditView: View {
                                         )
                                 }
                             }
-                            .contentShape(Rectangle()) // ensure the whole circle area is tappable
+                            .contentShape(Rectangle()) // whole circle is tappable
                         }
                         .disabled(isLoading)
 
@@ -265,15 +265,24 @@ struct ProfileEditView: View {
         Task {
             var finalPhotoPath: String? = store.profile.photoPath
 
+            // Persist new avatar to Documents if user picked one
             if let data = draftPhotoData {
                 let filename = "profile_\(UUID().uuidString).jpg"
-                let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let url = FileManager.default
+                    .urls(for: .documentDirectory, in: .userDomainMask)[0]
                     .appendingPathComponent(filename)
                 try? data.write(to: url)
                 finalPhotoPath = url.path
             }
 
+            // 1) Save locally
             store.saveProfile(name: n, email: e, photoPath: finalPhotoPath, isRegistered: true)
+
+            // 2) Push to Firebase Auth (displayName/photoURL) & Firestore users/{uid}
+            await session.updateAuthProfile(displayName: n, photoURLString: finalPhotoPath)
+            await session.upsertUserDoc(name: n, email: e, photoURLString: finalPhotoPath)
+
+            // 3) Keep existing seeding/entitlements flow
             await session.runSeedIfNeeded()
             await session.refreshEntitlements()
 
