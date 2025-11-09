@@ -195,6 +195,9 @@ struct JournalLibrarySearchView: View {
     @State private var showDeleteConfirm = false
     @State private var sharePayload: SharePayload? = nil   // ← item-based share
 
+    // Scroll-to-top trigger
+    @State private var scrollResetToken = UUID()
+
     // MARK: Derived lists (lightweight)
     private var baseSorted: [JournalEntryIOS] {
         allEntries.sorted { $0.updatedAt > $1.updatedAt }
@@ -267,7 +270,8 @@ struct JournalLibrarySearchView: View {
                         items: workingList,
                         selected: $selected,
                         hasSelection: hasSelection,
-                        onOpen: onOpen
+                        onOpen: onOpen,
+                        scrollResetToken: scrollResetToken   // ← pass token
                     )
                     // Ensure last cell stays visible above the overlaid action bar + footer
                     .padding(.bottom, hasSelection ? (footerH + safeBottom + actionBarH) : (footerH + safeBottom))
@@ -355,10 +359,10 @@ struct JournalLibrarySearchView: View {
                 Text("This will permanently delete \(selected.count) entr\(selected.count == 1 ? "y" : "ies").")
             }
         )
-        .onChange(of: query) { _ in pruneSelection() }
-        .onChange(of: sortKey) { _ in pruneSelection() }
-        .onChange(of: sortAsc) { _ in pruneSelection() }
-        .onChange(of: activeTypes) { _ in pruneSelection() }
+        .onChange(of: query)       { _ in pruneSelection(); scrollResetToken = UUID() }
+        .onChange(of: sortKey)     { _ in pruneSelection(); scrollResetToken = UUID() }
+        .onChange(of: sortAsc)     { _ in pruneSelection(); scrollResetToken = UUID() }
+        .onChange(of: activeTypes) { _ in pruneSelection(); scrollResetToken = UUID() }
     }
 
     // MARK: - Helpers
@@ -499,29 +503,40 @@ private struct ResultsList: View {
     @Binding var selected: Set<Int64>
     let hasSelection: Bool
     var onOpen: (JournalEntryIOS) -> Void
+    let scrollResetToken: UUID
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 8) { // tighter row spacing
-                ForEach(items) { e in
-                    JournalRow(
-                        entry: e,
-                        checked: selected.contains(e.id),
-                        onToggleCheck: { isOn in
-                            if isOn { selected.insert(e.id) } else { selected.remove(e.id) }
-                        },
-                        onTap: {
-                            if hasSelection {
-                                if selected.contains(e.id) { selected.remove(e.id) } else { selected.insert(e.id) }
-                            } else {
-                                onOpen(e)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 8) { // tighter row spacing
+                    // Invisible top anchor
+                    Color.clear.frame(height: 0).id("TOP")
+
+                    ForEach(items) { e in
+                        JournalRow(
+                            entry: e,
+                            checked: selected.contains(e.id),
+                            onToggleCheck: { isOn in
+                                if isOn { selected.insert(e.id) } else { selected.remove(e.id) }
+                            },
+                            onTap: {
+                                if hasSelection {
+                                    if selected.contains(e.id) { selected.remove(e.id) } else { selected.insert(e.id) }
+                                } else {
+                                    onOpen(e)
+                                }
                             }
-                        }
-                    )
-                    .padding(.horizontal, 12)
+                        )
+                        .padding(.horizontal, 12)
+                    }
+                }
+                .padding(.top, 10)
+            }
+            .onChange(of: scrollResetToken) { _ in
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    proxy.scrollTo("TOP", anchor: .top)
                 }
             }
-            .padding(.top, 10)
         }
     }
 }
