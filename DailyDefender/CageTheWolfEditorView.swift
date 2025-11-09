@@ -150,6 +150,10 @@ struct CageTheWolfEditorView: View {
     @State private var isSaving = false
     @State private var showDeleteConfirm = false
 
+    // Toolbar presentation state
+    @State private var showJournalShield = false
+    @State private var showProfileEdit = false
+
     // Callbacks
     var onBack: () -> Void = {}
     var onSave: (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in }
@@ -322,21 +326,27 @@ struct CageTheWolfEditorView: View {
         }
         // Toolbar
         .toolbar {
+            // LEFT — Brand / Shield icon (tappable)
             ToolbarItem(placement: .navigationBarLeading) {
-                (UIImage(named: shieldAsset) != nil ? Image(shieldAsset).resizable().scaledToFit()
-                                                    : Image("AppShieldSquare").resizable().scaledToFit())
-                    .frame(width: 36, height: 36)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                    .padding(4)
-                    .offset(y: -2)
+                Button(action: { showJournalShield = true }) {
+                    (UIImage(named: shieldAsset) != nil ? Image(shieldAsset).resizable().scaledToFit()
+                                                        : Image("AppShieldSquare").resizable().scaledToFit())
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                        .padding(4)
+                        .offset(y: -2)
+                }
+                .accessibilityLabel("Open Journal shield")
             }
+            // CENTER — Title
             ToolbarItem(placement: .principal) {
                 Text("Cage The Wolf")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .padding(.bottom, 10)
             }
+            // RIGHT — Profile avatar (tappable)
             ToolbarItem(placement: .navigationBarTrailing) {
                 Group {
                     if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
@@ -352,6 +362,8 @@ struct CageTheWolfEditorView: View {
                 .frame(width: 32, height: 32)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .offset(y: -2)
+                .onTapGesture { showProfileEdit = true }
+                .accessibilityLabel("Profile")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -361,9 +373,19 @@ struct CageTheWolfEditorView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
+        // Presentations
+        .fullScreenCover(isPresented: $showJournalShield) {
+            ShieldPage(
+                imageName: (UIImage(named: shieldAsset) != nil ? shieldAsset : "AppShieldSquare")
+            )
+        }
+        .sheet(isPresented: $showProfileEdit) {
+            ProfileEditView().environmentObject(store)
+        }
+
+        // Footer re-tap → pop
         .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
             dismiss()
         }
     }
 }
-

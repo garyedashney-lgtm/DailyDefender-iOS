@@ -1,62 +1,6 @@
 import SwiftUI
-import UIKit
 
-// MARK: - Auto-growing UIKit text view (no internal scroll)
-private struct AutoGrowingTextView: UIViewRepresentable {
-    @Binding var text: String
-    @Binding var calculatedHeight: CGFloat
-    var isEditable: Bool
-    var font: UIFont = .preferredFont(forTextStyle: .body)
-    var textColor: UIColor = .white
-    var tint: UIColor = UIColor(AppTheme.appGreen)
-    var contentInset: UIEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
-
-    func makeUIView(context: Context) -> UITextView {
-        let tv = UITextView()
-        tv.backgroundColor = .clear
-        tv.isScrollEnabled = false
-        tv.isEditable = isEditable
-        tv.isSelectable = true
-        tv.text = text
-        tv.font = font
-        tv.textColor = textColor
-        tv.tintColor = tint
-        tv.textContainerInset = contentInset
-        tv.textContainer.lineFragmentPadding = 0
-        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        tv.delegate = context.coordinator
-        return tv
-    }
-
-    func updateUIView(_ uiView: UITextView, context: Context) {
-        if uiView.text != text { uiView.text = text }
-        uiView.isEditable = isEditable
-        uiView.font = font
-        uiView.textColor = textColor
-        uiView.tintColor = tint
-        uiView.textContainerInset = contentInset
-        AutoGrowingTextView.recalculateHeight(view: uiView, result: $calculatedHeight)
-    }
-
-    static func recalculateHeight(view: UIView, result: Binding<CGFloat>) {
-        let size = view.sizeThatFits(CGSize(width: view.bounds.width, height: .greatestFiniteMagnitude))
-        if result.wrappedValue != size.height {
-            DispatchQueue.main.async { result.wrappedValue = size.height }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: AutoGrowingTextView
-        init(_ parent: AutoGrowingTextView) { self.parent = parent }
-        func textViewDidChange(_ textView: UITextView) {
-            parent.text = textView.text
-            AutoGrowingTextView.recalculateHeight(view: textView, result: parent.$calculatedHeight)
-        }
-    }
-}
-
-// MARK: - Compact Created/Updated row (Android parity)
+// MARK: - Local short date helpers
 private func dateOnlyLabel(_ date: Date) -> String {
     let f = DateFormatter(); f.dateFormat = "EEE, MMM d, yyyy"
     return f.string(from: date)
@@ -81,84 +25,87 @@ private struct CreatedUpdatedRowCompact: View {
     }
 }
 
-// MARK: - One section (header + editor)
-private struct BlessingSectionCard: View {
-    let header: String
+// MARK: - One TenR section (header + optional prompt + input)
+private struct TenRSectionCard: View {
+    let index: Int
+    let title: String
+    let prompt: String?
     @Binding var text: String
-    var isEditing: Bool
-
-    @State private var height: CGFloat = 140
+    let isEditing: Bool
+    let showInput: Bool   // steps 1..9 = true, step 10 = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(header)
-                .font(.callout.weight(.semibold))          // smaller than title3
-                .foregroundStyle(AppTheme.textSecondary)   // dimmer color
+            // Header style per your preference (smaller + dimmer)
+            Text("\(index + 1) — \(title)")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(AppTheme.textSecondary)
 
-            ZStack(alignment: .topLeading) {
-                if isEditing && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("Your thoughts")
-                        .font(.callout)
-                        .foregroundStyle(Color(uiColor: .placeholderText))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                }
-
-                if isEditing {
-                    AutoGrowingTextView(text: $text, calculatedHeight: $height, isEditable: true)
-                        .frame(height: max(height, 110), alignment: .topLeading)
-                } else {
-                    Text(text.isEmpty ? "—" : text)
-                        .font(.body)
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                }
+            if let p = prompt, !p.isEmpty {
+                Text(p)
+                    .font(.footnote)
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.surfaceUI))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
+
+            if showInput {
+                ZStack(alignment: .topLeading) {
+                    if isEditing && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Text("Your response…")
+                            .font(.callout)
+                            .foregroundStyle(Color(uiColor: .placeholderText))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .allowsHitTesting(false)
+                    }
+                    TextEditor(text: $text)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 110, alignment: .topLeading)
+                        .disabled(!isEditing)
+                        .foregroundStyle(AppTheme.textPrimary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                }
+                .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.surfaceUI))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1)
+                )
+            }
         }
     }
 }
 
-// MARK: - BlessingTallyEditorView
-struct BlessingTallyEditorView: View {
-    @EnvironmentObject var store: HabitStore
+// MARK: - TenR Editor
+struct TenREditorView: View {
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var store: HabitStore
 
     // Entry state
     @State private var createdAt: Date
     @State private var updatedAt: Date
     @State private var titleText: String
-    @State private var a1: String
-    @State private var a2: String
-    @State private var a3: String
+    @State private var answers: [String]          // size = TenR.inputCount (1..9)
     @State private var isEditingExisting: Bool
     @State private var isEditing: Bool
     @State private var isSaving = false
-
-    // Delete confirm
     @State private var showDeleteConfirm = false
 
-    // Toolbar presentation state
+    // Toolbar actions
     @State private var showJournalShield = false
     @State private var showProfileEdit = false
+    private let shieldAsset = "AppShieldSquare"
 
     // Callbacks
     var onBack: () -> Void = {}
     var onSave: (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in }
     var onDelete: () -> Void = {}
 
-    private let shieldAsset = "AppShieldSquare"
-
     init(
-        initialTitle: String = BlessingTally.title,
+        initialTitle: String = "10R Process",
         initialCreatedAt: Date = Date(),
         initialUpdatedAt: Date? = nil,
-        initialAnswers: (String, String, String) = ("", "", ""),
+        initialAnswers: [String] = Array(repeating: "", count: max(1, (TenR.inputCount))), // 9 inputs
         isEditingExisting: Bool = false,
         onBack: @escaping () -> Void = {},
         onSave: @escaping (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in },
@@ -167,9 +114,9 @@ struct BlessingTallyEditorView: View {
         _titleText = State(initialValue: initialTitle)
         _createdAt = State(initialValue: initialCreatedAt)
         _updatedAt = State(initialValue: initialUpdatedAt ?? initialCreatedAt)
-        _a1 = State(initialValue: initialAnswers.0)
-        _a2 = State(initialValue: initialAnswers.1)
-        _a3 = State(initialValue: initialAnswers.2)
+        // ensure exactly TenR.inputCount slots
+        let trimmed = Array(initialAnswers.prefix(TenR.inputCount)) + Array(repeating: "", count: max(0, TenR.inputCount - initialAnswers.count))
+        _answers = State(initialValue: trimmed)
         _isEditingExisting = State(initialValue: isEditingExisting)
         _isEditing = State(initialValue: !isEditingExisting)
         self.onBack = onBack
@@ -195,15 +142,22 @@ struct BlessingTallyEditorView: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
                         .foregroundStyle(AppTheme.textPrimary)
 
-                    // Tip (per Android)
-                    Text("Tip: Try this for 7 days and then adopt the practice for life...")
-                        .font(.callout.italic())
-                        .foregroundStyle(AppTheme.textSecondary)
-
-                    // Sections (1–3)
-                    BlessingSectionCard(header: BlessingTally.sections[0], text: $a1, isEditing: isEditing)
-                    BlessingSectionCard(header: BlessingTally.sections[1], text: $a2, isEditing: isEditing)
-                    BlessingSectionCard(header: BlessingTally.sections[2], text: $a3, isEditing: isEditing)
+                    // Sections 1..10 (inputs for 1..9)
+                    ForEach(0..<TenR.titles.count, id: \.self) { i in
+                        TenRSectionCard(
+                            index: i,
+                            title: TenR.titles[i],
+                            prompt: TenR.prompts.indices.contains(i) ? TenR.prompts[i] : nil,
+                            text: Binding(
+                                get: { i < TenR.inputCount ? answers[i] : "" },
+                                set: { newValue in
+                                    if i < TenR.inputCount { answers[i] = newValue }
+                                }
+                            ),
+                            isEditing: isEditing,
+                            showInput: i < TenR.inputCount
+                        )
+                    }
 
                     // Actions
                     HStack(spacing: 40) {
@@ -211,11 +165,12 @@ struct BlessingTallyEditorView: View {
                             Button {
                                 guard !isSaving else { return }
                                 isSaving = true
-                                let trimmedTitle = titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? BlessingTally.title
+                                let cleanTitle = titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? "10R Process"
                                     : titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let body = buildBlessingTallyBody([a1, a2, a3])
-                                onSave(trimmedTitle, body, createdAt)
+                                // Build body (answers 1..9; step 10 rendered as informational by builder)
+                                let body = buildTenRBody(answers)
+                                onSave(cleanTitle, body, createdAt)
                                 dismiss()
                             } label: {
                                 HStack(spacing: 6) {
@@ -295,27 +250,32 @@ struct BlessingTallyEditorView: View {
             // LEFT — Brand / Shield icon (tappable)
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: { showJournalShield = true }) {
-                    (UIImage(named: shieldAsset) != nil ? Image(shieldAsset).resizable().scaledToFit()
-                                                        : Image("AppShieldSquare").resizable().scaledToFit())
-                        .frame(width: 36, height: 36)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                        .padding(4)
-                        .offset(y: -2)
+                    (UIImage(named: shieldAsset) != nil
+                     ? Image(shieldAsset).resizable().scaledToFit()
+                     : Image("AppShieldSquare").resizable().scaledToFit()
+                    )
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                    .padding(4)
+                    .offset(y: -2)
                 }
                 .accessibilityLabel("Open Journal shield")
             }
+
             // CENTER — Title
             ToolbarItem(placement: .principal) {
-                Text("3 Blessings")
+                Text("10R Process")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .padding(.bottom, 10)
             }
+
             // RIGHT — Profile avatar (tappable)
             ToolbarItem(placement: .navigationBarTrailing) {
                 Group {
-                    if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
+                    if let path = store.profile.photoPath,
+                       let ui = UIImage(contentsOfFile: path) {
                         Image(uiImage: ui).resizable().scaledToFill()
                     } else if UIImage(named: "ATMPic") != nil {
                         Image("ATMPic").resizable().scaledToFill()

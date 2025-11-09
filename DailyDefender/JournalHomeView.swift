@@ -19,6 +19,8 @@ struct JournalHomeView: View {
         case blessingTallyExisting(JournalEntryIOS)
         case ctwNew
         case ctwExisting(JournalEntryIOS)
+        case tenRNew
+        case tenRExisting(JournalEntryIOS)
         case search
     }
     @State private var path: [JournalRoute] = []
@@ -91,9 +93,11 @@ struct JournalHomeView: View {
                             JournalCardRow(
                                 title: "10R Process",
                                 subtitle: "– Triggered?",
-                                emoji: "📝",
-                                action: onTenR
-                            )
+                                emoji: "📝"
+                            ) {
+                                path.append(.tenRNew)
+                                onTenR()
+                            }
 
                             // 🪞 Self Care Writing — – Traumatized?
                             JournalCardRow(
@@ -302,7 +306,7 @@ struct JournalHomeView: View {
                         .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
                             dismiss()
                         }
-                        
+
                     case .gratitudeNew:
                         GratitudeEditorView(
                             initialTitle: "Gratitude",
@@ -318,7 +322,7 @@ struct JournalHomeView: View {
                             onDelete: { }
                         )
                         .environmentObject(store)
-                        
+
                     case .ctwNew:
                         CageTheWolfEditorView(
                             initialTitle: "Cage The Wolf",
@@ -327,7 +331,6 @@ struct JournalHomeView: View {
                             isEditingExisting: false,
                             onBack: { dismiss() },
                             onSave: { title, body, created in
-                                // Save as a single body block like other editors (parity with Android body builder)
                                 JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
                                 dismiss()
                             },
@@ -338,9 +341,7 @@ struct JournalHomeView: View {
                             dismiss()
                         }
 
-                    // OPEN EXISTING CTW ENTRY
                     case .ctwExisting(let entry):
-                        // Parse 6 sections; editor only uses first 5 inputs, section 6 is informational
                         let parsed = parseCtwBody(entry.content)
                         let answers5 = Array(parsed.prefix(Ctw.inputCount)) + Array(repeating: "", count: max(0, Ctw.inputCount - parsed.count))
                         CageTheWolfEditorView(
@@ -367,15 +368,69 @@ struct JournalHomeView: View {
                         .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
                             dismiss()
                         }
+
+                    // 📝 10R NEW
+                    case .tenRNew:
+                        TenREditorView(
+                            initialTitle: "10R Process",
+                            initialCreatedAt: Date(),
+                            initialUpdatedAt: nil,
+                            initialAnswers: Array(repeating: "", count: TenR.inputCount),
+                            isEditingExisting: false,
+                            onBack: { dismiss() },
+                            onSave: { title, body, created in
+                                // body already built by TenREditorView via buildTenRBody
+                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                                dismiss()
+                            },
+                            onDelete: { }
+                        )
+                        .environmentObject(store)
+                        .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
+                            dismiss()
+                        }
+
+                    // 📝 10R EXISTING
+                    case .tenRExisting(let entry):
+                        let parsed = parseTenRBody(entry.content)
+                        let initial = Array(parsed.prefix(TenR.inputCount)) + Array(repeating: "", count: max(0, TenR.inputCount - parsed.count))
+                        TenREditorView(
+                            initialTitle: entry.title.isEmpty ? "10R Process" : entry.title,
+                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                            initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
+                            initialAnswers: initial,
+                            isEditingExisting: true,
+                            onBack: { dismiss() },
+                            onSave: { title, body, created in
+                                JournalMemoryStore.shared.updateEntry(
+                                    id: entry.id,
+                                    title: title,
+                                    body: body,
+                                    createdAt: created
+                                )
+                                dismiss()
+                            },
+                            onDelete: {
+                                JournalMemoryStore.shared.delete(ids: [entry.id])
+                                dismiss()
+                            }
+                        )
+                        .environmentObject(store)
+                        .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
+                            dismiss()
+                        }
+
                     case .search:
                         JournalLibrarySearchView(
                             allEntries: journalStore.entries,
                             onOpen: { tapped in
-                                // Route to Blessing Tally editor if it matches; else Free Flow
+                                // Route by content shape, then fall back to Free Flow
                                 if looksLikeCtwLocal(tapped.content) {
                                     path.append(.ctwExisting(tapped))
                                 } else if looksLikeBlessingTallyLocal(tapped.content) {
                                     path.append(.blessingTallyExisting(tapped))
+                                } else if looksLikeTenRLocal(tapped.title, tapped.content) {
+                                    path.append(.tenRExisting(tapped))
                                 } else {
                                     path.append(.freeFlowExisting(tapped))
                                 }
@@ -393,18 +448,15 @@ struct JournalHomeView: View {
     }
 }
 
-// MARK: - Local detector used for routing from Library
+// MARK: - Local detectors used for routing from Library
 private func looksLikeBlessingTallyLocal(_ content: String) -> Bool {
     let pattern = #"(?m)^\s*1\s*[—-]\s*What are three things from today that went well\.?"#
     return content.range(of: pattern, options: .regularExpression) != nil
 }
 
 private func looksLikeCtwLocal(_ content: String) -> Bool {
-    // Heuristic 1: CTW numbered headers (at least the first one)
     let step1 = #"(?m)^\s*1\s*[—-]\s*Set rules and claim a higher self\s*$"#
     if content.range(of: step1, options: .regularExpression) != nil { return true }
-
-    // Heuristic 2: older markdown variant used in some drafts
     if content.contains("## 1) Claiming Identity")
         && content.contains("## 2) Identify the Wolf")
         && content.contains("## 3) Train the Wolf") {
@@ -413,6 +465,15 @@ private func looksLikeCtwLocal(_ content: String) -> Bool {
     return false
 }
 
+private func looksLikeTenRLocal(_ title: String, _ content: String) -> Bool {
+    // Title hint or first numbered header
+    let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    if trimmed.range(of: "10R Process", options: .caseInsensitive) != nil {
+        return true
+    }
+    let pattern = #"(?m)^\s*1\s*[—-]\s*Recognize"#
+    return content.range(of: pattern, options: .regularExpression) != nil
+}
 // MARK: - Section Header
 private struct SectionHeaderCustom: View {
     let title: String
@@ -479,6 +540,8 @@ private struct JournalCardRow: View {
         .buttonStyle(.plain)
     }
 }
+
+// MARK: - Helpers
 private func answersTuple(from content: String) -> (String, String, String) {
     let arr = parseBlessingTallyBody(content)
     let a0 = arr.indices.contains(0) ? arr[0] : ""
