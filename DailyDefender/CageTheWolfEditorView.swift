@@ -1,15 +1,15 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Auto-growing UIKit text view (no internal scroll)
+// MARK: - Local auto-growing UITextView (scoped to this file)
 private struct AutoGrowingTextView: UIViewRepresentable {
     @Binding var text: String
-    @Binding var calculatedHeight: CGFloat
+    @Binding var measuredHeight: CGFloat
     var isEditable: Bool
     var font: UIFont = .preferredFont(forTextStyle: .body)
     var textColor: UIColor = .white
     var tint: UIColor = UIColor(AppTheme.appGreen)
-    var contentInset: UIEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+    var inset: UIEdgeInsets = .init(top: 8, left: 8, bottom: 8, right: 8)
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
@@ -21,24 +21,24 @@ private struct AutoGrowingTextView: UIViewRepresentable {
         tv.font = font
         tv.textColor = textColor
         tv.tintColor = tint
-        tv.textContainerInset = contentInset
+        tv.textContainerInset = inset
         tv.textContainer.lineFragmentPadding = 0
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         tv.delegate = context.coordinator
         return tv
     }
 
-    func updateUIView(_ uiView: UITextView, context: Context) {
-        if uiView.text != text { uiView.text = text }
-        uiView.isEditable = isEditable
-        uiView.font = font
-        uiView.textColor = textColor
-        uiView.tintColor = tint
-        uiView.textContainerInset = contentInset
-        AutoGrowingTextView.recalculateHeight(view: uiView, result: $calculatedHeight)
+    func updateUIView(_ ui: UITextView, context: Context) {
+        if ui.text != text { ui.text = text }
+        ui.isEditable = isEditable
+        ui.font = font
+        ui.textColor = textColor
+        ui.tintColor = tint
+        ui.textContainerInset = inset
+        AutoGrowingTextView.recalcHeight(ui, into: $measuredHeight)
     }
 
-    static func recalculateHeight(view: UIView, result: Binding<CGFloat>) {
+    static func recalcHeight(_ view: UIView, into result: Binding<CGFloat>) {
         let size = view.sizeThatFits(CGSize(width: view.bounds.width, height: .greatestFiniteMagnitude))
         if result.wrappedValue != size.height {
             DispatchQueue.main.async { result.wrappedValue = size.height }
@@ -51,17 +51,16 @@ private struct AutoGrowingTextView: UIViewRepresentable {
         init(_ parent: AutoGrowingTextView) { self.parent = parent }
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
-            AutoGrowingTextView.recalculateHeight(view: textView, result: parent.$calculatedHeight)
+            AutoGrowingTextView.recalcHeight(textView, into: parent.$measuredHeight)
         }
     }
 }
 
-// MARK: - Compact Created/Updated row (Android parity)
+// MARK: - Small date row (local)
 private func dateOnlyLabel(_ date: Date) -> String {
     let f = DateFormatter(); f.dateFormat = "EEE, MMM d, yyyy"
     return f.string(from: date)
 }
-
 private struct CreatedUpdatedRowCompact: View {
     let created: Date
     let updated: Date
@@ -81,66 +80,74 @@ private struct CreatedUpdatedRowCompact: View {
     }
 }
 
-// MARK: - One section (header + editor)
-private struct BlessingSectionCard: View {
+// MARK: - One CTW section (header + optional prompt + editor)
+private struct CtwSectionCard: View {
     let header: String
+    let prompt: String?
     @Binding var text: String
-    var isEditing: Bool
-
+    let isEditable: Bool
     @State private var height: CGFloat = 140
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            // Your preferred header style (smaller + dimmer)
             Text(header)
-                .font(.callout.weight(.semibold))          // smaller than title3
-                .foregroundStyle(AppTheme.textSecondary)   // dimmer color
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(AppTheme.textSecondary)
 
-            ZStack(alignment: .topLeading) {
-                if isEditing && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text("Your thoughts")
-                        .font(.callout)
-                        .foregroundStyle(Color(uiColor: .placeholderText))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                }
-
-                if isEditing {
-                    AutoGrowingTextView(text: $text, calculatedHeight: $height, isEditable: true)
-                        .frame(height: max(height, 110), alignment: .topLeading)
-                } else {
-                    Text(text.isEmpty ? "—" : text)
-                        .font(.body)
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                }
+            if let prompt, !prompt.isEmpty {
+                Text(prompt)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.9))
             }
-            .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.surfaceUI))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
+
+            ZstackEditor
         }
+    }
+
+    @ViewBuilder
+    private var ZstackEditor: some View {
+        ZStack(alignment: .topLeading) {
+            if isEditable && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text("Your response…")
+                    .font(.callout)
+                    .foregroundStyle(Color(uiColor: .placeholderText))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .allowsHitTesting(false)
+            }
+
+            if isEditable {
+                AutoGrowingTextView(text: $text, measuredHeight: $height, isEditable: true)
+                    .frame(height: max(height, 110), alignment: .topLeading)
+            } else {
+                Text(text.isEmpty ? "—" : text)
+                    .font(.body)
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.surfaceUI))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
     }
 }
 
-// MARK: - BlessingTallyEditorView
-struct BlessingTallyEditorView: View {
+// MARK: - CageTheWolfEditorView
+struct CageTheWolfEditorView: View {
     @EnvironmentObject var store: HabitStore
     @Environment(\.dismiss) private var dismiss
 
-    // Entry state
+    // State
     @State private var createdAt: Date
     @State private var updatedAt: Date
     @State private var titleText: String
-    @State private var a1: String
-    @State private var a2: String
-    @State private var a3: String
+    @State private var answers: [String]          // only for sections 1–5
     @State private var isEditingExisting: Bool
     @State private var isEditing: Bool
     @State private var isSaving = false
-
-    // Delete confirm
     @State private var showDeleteConfirm = false
 
     // Callbacks
@@ -151,10 +158,10 @@ struct BlessingTallyEditorView: View {
     private let shieldAsset = "AppShieldSquare"
 
     init(
-        initialTitle: String = BlessingTally.title,
+        initialTitle: String = Ctw.title,
         initialCreatedAt: Date = Date(),
         initialUpdatedAt: Date? = nil,
-        initialAnswers: (String, String, String) = ("", "", ""),
+        initialAnswers: [String] = Array(repeating: "", count: Ctw.inputCount),
         isEditingExisting: Bool = false,
         onBack: @escaping () -> Void = {},
         onSave: @escaping (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in },
@@ -163,9 +170,11 @@ struct BlessingTallyEditorView: View {
         _titleText = State(initialValue: initialTitle)
         _createdAt = State(initialValue: initialCreatedAt)
         _updatedAt = State(initialValue: initialUpdatedAt ?? initialCreatedAt)
-        _a1 = State(initialValue: initialAnswers.0)
-        _a2 = State(initialValue: initialAnswers.1)
-        _a3 = State(initialValue: initialAnswers.2)
+        // normalize to exactly 5 inputs
+        let normalized = initialAnswers.count >= Ctw.inputCount
+            ? Array(initialAnswers.prefix(Ctw.inputCount))
+            : initialAnswers + Array(repeating: "", count: Ctw.inputCount - initialAnswers.count)
+        _answers = State(initialValue: normalized)
         _isEditingExisting = State(initialValue: isEditingExisting)
         _isEditing = State(initialValue: !isEditingExisting)
         self.onBack = onBack
@@ -178,10 +187,10 @@ struct BlessingTallyEditorView: View {
             AppTheme.navy900.ignoresSafeArea()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 14) {
                     CreatedUpdatedRowCompact(created: createdAt, updated: updatedAt)
 
-                    // Title
+                    // Title (non-outlined, same style as 3B)
                     TextField("Title", text: $titleText, axis: .vertical)
                         .disabled(!isEditing)
                         .textInputAutocapitalization(.sentences)
@@ -191,15 +200,32 @@ struct BlessingTallyEditorView: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
                         .foregroundStyle(AppTheme.textPrimary)
 
-                    // Tip (per Android)
-                    Text("Tip: Try this for 7 days and then adopt the practice for life...")
-                        .font(.callout.italic())
-                        .foregroundStyle(AppTheme.textSecondary)
+                    // Sections 1..5 editable, 6 informational
+                    ForEach(0..<Ctw.sectionCount, id: \.self) { i in
+                        if i < Ctw.inputCount {
+                            CtwSectionCard(
+                                header: "\(i + 1) — \(Ctw.titles[i])",
+                                prompt: Ctw.prompts[i].isEmpty ? nil : Ctw.prompts[i],
+                                text: $answers[i],
+                                isEditable: isEditing
+                            )
+                        } else {
+                            // Section 6 (informational with link)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("\(i + 1) — \(Ctw.titles[i])")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(AppTheme.textSecondary)
 
-                    // Sections (1–3)
-                    BlessingSectionCard(header: BlessingTally.sections[0], text: $a1, isEditing: isEditing)
-                    BlessingSectionCard(header: BlessingTally.sections[1], text: $a2, isEditing: isEditing)
-                    BlessingSectionCard(header: BlessingTally.sections[2], text: $a3, isEditing: isEditing)
+                                Text("Repeat sequences as needed. For more on Cage The Wolf, tap the link below:")
+                                    .font(.caption)
+                                    .foregroundStyle(AppTheme.textSecondary.opacity(0.9))
+
+                                Link("Click here",
+                                     destination: URL(string: "https://www.amazon.com/SIPPING-FEAR-PISSING-CONFIDENCE-Addictions/dp/198795405X/ref=tmm_pap_swatch_0")!)
+                                    .font(.body.weight(.semibold))
+                            }
+                        }
+                    }
 
                     // Actions
                     HStack(spacing: 40) {
@@ -207,11 +233,19 @@ struct BlessingTallyEditorView: View {
                             Button {
                                 guard !isSaving else { return }
                                 isSaving = true
-                                let trimmedTitle = titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    ? BlessingTally.title
+                                let title = titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? Ctw.title
                                     : titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                let body = buildBlessingTallyBody([a1, a2, a3])
-                                onSave(trimmedTitle, body, createdAt)
+
+                                // Build 6 blocks: first 5 from answers, last empty (informational)
+                                var blocks = answers
+                                if blocks.count < Ctw.inputCount {
+                                    blocks += Array(repeating: "", count: Ctw.inputCount - blocks.count)
+                                }
+                                blocks += [""] // section 6 placeholder
+                                let body = buildCtwBody(blocks)
+
+                                onSave(title, body, createdAt)
                                 dismiss()
                             } label: {
                                 HStack(spacing: 6) {
@@ -298,7 +332,7 @@ struct BlessingTallyEditorView: View {
                     .offset(y: -2)
             }
             ToolbarItem(placement: .principal) {
-                Text("3 Blessings")
+                Text("Cage The Wolf")
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .padding(.bottom, 10)
@@ -327,9 +361,9 @@ struct BlessingTallyEditorView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-        // Footer re-tap → pop
         .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
             dismiss()
         }
     }
 }
+

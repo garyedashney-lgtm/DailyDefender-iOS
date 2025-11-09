@@ -43,6 +43,12 @@ private struct ShareSheet: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
+// Item-based share payload to guarantee fresh presentation each time
+private struct SharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
+}
+
 // MARK: - Type classification (Android parity)
 enum JournalTypeIOS: CaseIterable {
     case tenR, cage, gratitude, selfCare, blessingTally, free, css, dvs
@@ -187,8 +193,7 @@ struct JournalLibrarySearchView: View {
     // Selection & actions
     @State private var selected: Set<Int64> = []
     @State private var showDeleteConfirm = false
-    @State private var showShareSheet = false
-    @State private var shareItems: [Any] = []
+    @State private var sharePayload: SharePayload? = nil   // ← item-based share
 
     // MARK: Derived lists (lightweight)
     private var baseSorted: [JournalEntryIOS] {
@@ -277,8 +282,7 @@ struct JournalLibrarySearchView: View {
                             SelectionActions(
                                 buildShareText: { chosen in buildShareText(from: chosen) },
                                 chosen: workingList.filter { selected.contains($0.id) },
-                                showShareSheet: $showShareSheet,
-                                shareItems: $shareItems,
+                                sharePayload: $sharePayload,
                                 showDeleteConfirm: $showDeleteConfirm
                             )
                             .background(AppTheme.navy900.opacity(0.98))
@@ -330,8 +334,9 @@ struct JournalLibrarySearchView: View {
         .sheet(isPresented: $showProfileEdit) {
             ProfileEditView().environmentObject(store)
         }
-        .sheet(isPresented: $showShareSheet) {
-            ShareSheet(items: shareItems)
+        // Item-based share presentation
+        .sheet(item: $sharePayload) { payload in
+            ShareSheet(items: payload.items)
         }
 
         // Delete confirmation
@@ -524,8 +529,7 @@ private struct ResultsList: View {
 private struct SelectionActions: View {
     var buildShareText: ([JournalEntryIOS]) -> String
     let chosen: [JournalEntryIOS]
-    @Binding var showShareSheet: Bool
-    @Binding var shareItems: [Any]
+    @Binding var sharePayload: SharePayload?
     @Binding var showDeleteConfirm: Bool
 
     var body: some View {
@@ -533,8 +537,8 @@ private struct SelectionActions: View {
             HStack(spacing: 16) {
                 Button {
                     let text = buildShareText(chosen)
-                    shareItems = [text]
-                    showShareSheet = true
+                    // Create a brand-new payload each time for reliable presentation
+                    sharePayload = SharePayload(items: [text])
                 } label: {
                     Label("Share selected", systemImage: "square.and.arrow.up")
                 }

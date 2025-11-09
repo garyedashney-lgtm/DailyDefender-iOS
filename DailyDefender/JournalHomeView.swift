@@ -17,6 +17,8 @@ struct JournalHomeView: View {
         case freeFlowExisting(JournalEntryIOS)
         case blessingTallyNew
         case blessingTallyExisting(JournalEntryIOS)
+        case ctwNew
+        case ctwExisting(JournalEntryIOS)
         case search
     }
     @State private var path: [JournalRoute] = []
@@ -79,9 +81,11 @@ struct JournalHomeView: View {
                             JournalCardRow(
                                 title: "Cage The Wolf",
                                 subtitle: "– Tempted?",
-                                emoji: "🐺",
-                                action: onCageTheWolf
-                            )
+                                emoji: "🐺"
+                            ) {
+                                path.append(.ctwNew)
+                                onCageTheWolf()
+                            }
 
                             // 📝 10R Process — – Triggered?
                             JournalCardRow(
@@ -315,12 +319,62 @@ struct JournalHomeView: View {
                         )
                         .environmentObject(store)
                         
+                    case .ctwNew:
+                        CageTheWolfEditorView(
+                            initialTitle: "Cage The Wolf",
+                            initialCreatedAt: Date(),
+                            initialAnswers: Array(repeating: "", count: Ctw.inputCount), // 5 inputs
+                            isEditingExisting: false,
+                            onBack: { dismiss() },
+                            onSave: { title, body, created in
+                                // Save as a single body block like other editors (parity with Android body builder)
+                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                                dismiss()
+                            },
+                            onDelete: { }
+                        )
+                        .environmentObject(store)
+                        .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
+                            dismiss()
+                        }
+
+                    // OPEN EXISTING CTW ENTRY
+                    case .ctwExisting(let entry):
+                        // Parse 6 sections; editor only uses first 5 inputs, section 6 is informational
+                        let parsed = parseCtwBody(entry.content)
+                        let answers5 = Array(parsed.prefix(Ctw.inputCount)) + Array(repeating: "", count: max(0, Ctw.inputCount - parsed.count))
+                        CageTheWolfEditorView(
+                            initialTitle: entry.title.isEmpty ? "Cage The Wolf" : entry.title,
+                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                            initialAnswers: answers5,
+                            isEditingExisting: true,
+                            onBack: { dismiss() },
+                            onSave: { title, body, created in
+                                JournalMemoryStore.shared.updateEntry(
+                                    id: entry.id,
+                                    title: title,
+                                    body: body,
+                                    createdAt: created
+                                )
+                                dismiss()
+                            },
+                            onDelete: {
+                                JournalMemoryStore.shared.delete(ids: [entry.id])
+                                dismiss()
+                            }
+                        )
+                        .environmentObject(store)
+                        .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
+                            dismiss()
+                        }
                     case .search:
                         JournalLibrarySearchView(
                             allEntries: journalStore.entries,
                             onOpen: { tapped in
                                 // Route to Blessing Tally editor if it matches; else Free Flow
-                                if looksLikeBlessingTallyLocal(tapped.content) {
+                                if looksLikeCtwLocal(tapped.content) {
+                                    path.append(.ctwExisting(tapped))
+                                } else if looksLikeBlessingTallyLocal(tapped.content) {
                                     path.append(.blessingTallyExisting(tapped))
                                 } else {
                                     path.append(.freeFlowExisting(tapped))
@@ -343,6 +397,20 @@ struct JournalHomeView: View {
 private func looksLikeBlessingTallyLocal(_ content: String) -> Bool {
     let pattern = #"(?m)^\s*1\s*[—-]\s*What are three things from today that went well\.?"#
     return content.range(of: pattern, options: .regularExpression) != nil
+}
+
+private func looksLikeCtwLocal(_ content: String) -> Bool {
+    // Heuristic 1: CTW numbered headers (at least the first one)
+    let step1 = #"(?m)^\s*1\s*[—-]\s*Set rules and claim a higher self\s*$"#
+    if content.range(of: step1, options: .regularExpression) != nil { return true }
+
+    // Heuristic 2: older markdown variant used in some drafts
+    if content.contains("## 1) Claiming Identity")
+        && content.contains("## 2) Identify the Wolf")
+        && content.contains("## 3) Train the Wolf") {
+        return true
+    }
+    return false
 }
 
 // MARK: - Section Header
