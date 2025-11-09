@@ -1,147 +1,134 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Auto-growing UIKit text view (expands with content, no internal scroll)
-private struct AutoGrowingTextView: UIViewRepresentable {
+// MARK: - A tiny UIKit-backed text view so we can place the caret
+private struct SeedableTextView: UIViewRepresentable {
     @Binding var text: String
-    @Binding var calculatedHeight: CGFloat
     var isEditable: Bool
+    var moveCursorToEnd: Bool   // when true, we set selectedRange to end (one-shot)
     var font: UIFont = .preferredFont(forTextStyle: .body)
     var textColor: UIColor = .white
     var tint: UIColor = UIColor(AppTheme.appGreen)
-    var contentInset: UIEdgeInsets = UIEdgeInsets(top: 8, left: 8, bottom: 8, right: 8)
+    var inset: UIEdgeInsets = .init(top: 8, left: 8, bottom: 8, right: 8)
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
         tv.backgroundColor = .clear
-        tv.isScrollEnabled = false
+        tv.isScrollEnabled = true
+        tv.alwaysBounceVertical = true
         tv.isEditable = isEditable
         tv.isSelectable = true
         tv.text = text
         tv.font = font
         tv.textColor = textColor
         tv.tintColor = tint
-        tv.textContainerInset = contentInset
+        tv.textContainerInset = inset
         tv.textContainer.lineFragmentPadding = 0
-        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         tv.delegate = context.coordinator
         return tv
     }
 
-    func updateUIView(_ uiView: UITextView, context: Context) {
-        if uiView.text != text { uiView.text = text }
-        uiView.isEditable = isEditable
-        uiView.font = font
-        uiView.textColor = textColor
-        uiView.tintColor = tint
-        uiView.textContainerInset = contentInset
-        AutoGrowingTextView.recalculateHeight(view: uiView, result: $calculatedHeight)
-    }
+    func updateUIView(_ ui: UITextView, context: Context) {
+        if ui.text != text { ui.text = text }
+        ui.isEditable = isEditable
+        ui.font = font
+        ui.textColor = textColor
+        ui.tintColor = tint
+        ui.textContainerInset = inset
 
-    static func recalculateHeight(view: UIView, result: Binding<CGFloat>) {
-        let size = view.sizeThatFits(CGSize(width: view.bounds.width, height: .greatestFiniteMagnitude))
-        if result.wrappedValue != size.height {
-            DispatchQueue.main.async { result.wrappedValue = size.height }
+        // Move caret to end once when requested
+        if moveCursorToEnd {
+            let end = (ui.text as NSString).length
+            ui.selectedRange = NSRange(location: end, length: 0)
+            // Also scroll to caret if content is long
+            ui.scrollRangeToVisible(ui.selectedRange)
         }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: AutoGrowingTextView
-        init(_ parent: AutoGrowingTextView) { self.parent = parent }
+        var parent: SeedableTextView
+        init(_ parent: SeedableTextView) { self.parent = parent }
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text
-            AutoGrowingTextView.recalculateHeight(view: textView, result: parent.$calculatedHeight)
         }
     }
 }
 
-// MARK: - Body editor card (split out to help the compiler)
-private struct BodyCardView: View {
-    @Binding var bodyText: String
-    @Binding var editorHeight: CGFloat
-    var isEditing: Bool
-    var systemPlaceholder: Color
-    var placeholderText: String
-
+// MARK: - Simple date labels (compact, like other editors)
+private func dateOnlyLabel(_ date: Date) -> String {
+    let f = DateFormatter(); f.dateFormat = "EEE, MMM d, yyyy"
+    return f.string(from: date)
+}
+private struct CreatedUpdatedRowCompact: View {
+    let created: Date
+    let updated: Date
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            if isEditing {
-                if bodyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(placeholderText)
-                        .font(.callout)
-                        .foregroundColor(systemPlaceholder)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .allowsHitTesting(false)
-                }
-                AutoGrowingTextView(
-                    text: $bodyText,
-                    calculatedHeight: $editorHeight,
-                    isEditable: true
-                )
-                .frame(height: max(editorHeight, 120), alignment: .topLeading) // ~5 lines initial
-            } else {
-                Text(bodyText.isEmpty ? "—" : bodyText)
-                    .font(.body)
-                    .foregroundStyle(AppTheme.textPrimary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-            }
+        HStack(spacing: 10) {
+            Text("Created \(dateOnlyLabel(created))")
+                .font(.caption)
+                .foregroundStyle(AppTheme.textPrimary)
+            Text("•")
+                .font(.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+            Text("Updated \(dateOnlyLabel(updated))")
+                .font(.caption)
+                .foregroundStyle(AppTheme.textSecondary)
+            Spacer()
         }
-        .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.surfaceUI))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
     }
 }
 
-// MARK: - GratitudeEditorView
+// MARK: - Gratitude Editor
 struct GratitudeEditorView: View {
-    @EnvironmentObject var store: HabitStore
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject var store: HabitStore
 
-    // Header actions
-    @State private var showShield = false
-    @State private var showProfileEdit = false
+    // Public callbacks (match your existing signature)
+    var onBack: () -> Void = {}
+    var onSave: (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in }
+    var onDelete: () -> Void = {}
 
-    // Entry state
+    // State
     @State private var createdAt: Date
     @State private var updatedAt: Date
     @State private var titleText: String
     @State private var bodyText: String
     @State private var isEditingExisting: Bool
     @State private var isEditing: Bool
-    @State private var isSaving: Bool = false
-
-    // Delete confirm
+    @State private var isSaving = false
     @State private var showDeleteConfirm = false
 
-    // Auto-growing editor height
-    @State private var editorHeight: CGFloat = 180 // ~5 lines
-
-    // Callbacks (parent wires actual persistence; mirrors FreeFlowEditorView signature)
-    var onBack: () -> Void = {}
-    var onSave: (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in }
-    var onDelete: () -> Void = {}
+    // One-shot flag to place cursor at end after seeding
+    @State private var shouldMoveCursorToEnd = false
 
     private let shieldAsset = "AppShieldSquare"
-    private var systemPlaceholder: Color { Color(uiColor: .placeholderText) }
+    private let gratitudeSeed = "Today, I am grateful for: "
 
+    // Init mirrors how you construct in JournalHomeView
     init(
         initialTitle: String = "Gratitude",
-        initialBody: String = "Today, I am grateful for:",
+        initialBody: String = "",
         initialCreatedAt: Date = Date(),
-        initialUpdatedAt: Date = Date(),
+        initialUpdatedAt: Date? = nil,
         isEditingExisting: Bool = false,
         onBack: @escaping () -> Void = {},
         onSave: @escaping (_ title: String, _ body: String, _ createdAt: Date) -> Void = { _,_,_ in },
         onDelete: @escaping () -> Void = {}
     ) {
-        _createdAt = State(initialValue: initialCreatedAt)
-        _updatedAt = State(initialValue: initialUpdatedAt)
         _titleText = State(initialValue: initialTitle)
-        _bodyText = State(initialValue: initialBody)
+        _createdAt = State(initialValue: initialCreatedAt)
+        _updatedAt = State(initialValue: initialUpdatedAt ?? initialCreatedAt)
+
+        // Seed only for new entries with truly empty body
+        if !isEditingExisting && initialBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            _bodyText = State(initialValue: gratitudeSeed)
+            _shouldMoveCursorToEnd = State(initialValue: true) // position caret after seed
+        } else {
+            _bodyText = State(initialValue: initialBody)
+            _shouldMoveCursorToEnd = State(initialValue: false)
+        }
+
         _isEditingExisting = State(initialValue: isEditingExisting)
         _isEditing = State(initialValue: !isEditingExisting)
         self.onBack = onBack
@@ -155,13 +142,9 @@ struct GratitudeEditorView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    // Meta stamps (Created • Updated)
-                    Text("Created \(dateOnlyLabel(createdAt)) • Updated \(dateOnlyLabel(updatedAt))")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.textSecondary)
-                        .padding(.top, 2)
+                    CreatedUpdatedRowCompact(created: createdAt, updated: updatedAt)
 
-                    // Title — fixed default but editable if desired
+                    // Title
                     TextField("Title", text: $titleText, axis: .vertical)
                         .disabled(!isEditing)
                         .textInputAutocapitalization(.sentences)
@@ -171,25 +154,37 @@ struct GratitudeEditorView: View {
                         .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
                         .foregroundStyle(AppTheme.textPrimary)
 
-                    // Body (seeded)
-                    BodyCardView(
-                        bodyText: $bodyText,
-                        editorHeight: $editorHeight,
-                        isEditing: isEditing,
-                        systemPlaceholder: systemPlaceholder,
-                        placeholderText: "Today, I am grateful for:"
-                    )
+                    // Body (seed is REAL text; we move caret after seed one time)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Journal")
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(AppTheme.textSecondary)
 
-                    // Actions — centered
+                        SeedableTextView(
+                            text: $bodyText,
+                            isEditable: isEditing,
+                            moveCursorToEnd: shouldMoveCursorToEnd
+                        )
+                        .frame(minHeight: 160)
+                        .background(RoundedRectangle(cornerRadius: 12).fill(AppTheme.surfaceUI))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(AppTheme.textSecondary.opacity(0.15), lineWidth: 1))
+                        .onAppear {
+                            // Ensure we only try to move once
+                            if shouldMoveCursorToEnd { DispatchQueue.main.async { shouldMoveCursorToEnd = false } }
+                        }
+                    }
+
+                    // Actions
                     HStack(spacing: 40) {
                         if isEditing {
                             Button {
                                 guard !isSaving else { return }
                                 isSaving = true
-                                dismissKeyboard()
-                                updatedAt = Date()
-                                let trimmed = titleText.trimmingCharacters(in: .whitespacesAndNewlines)
-                                onSave(trimmed, bodyText, createdAt)
+                                let cleanTitle = titleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? "Gratitude"
+                                    : titleText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                // No stripping of the seed — it's intentional real content.
+                                onSave(cleanTitle, bodyText, createdAt)
                                 dismiss()
                             } label: {
                                 HStack(spacing: 6) {
@@ -206,7 +201,6 @@ struct GratitudeEditorView: View {
                             .buttonBorderShape(.roundedRectangle(radius: 12))
                         } else {
                             Button {
-                                editorHeight = computeEditorHeight(for: bodyText)
                                 isEditing = true
                             } label: {
                                 HStack(spacing: 6) {
@@ -222,7 +216,6 @@ struct GratitudeEditorView: View {
                         }
 
                         Button {
-                            dismissKeyboard()
                             onBack()
                             dismiss()
                         } label: {
@@ -266,30 +259,23 @@ struct GratitudeEditorView: View {
                 .padding(.top, 12)
             }
         }
-        // Header
+        // Toolbar
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { showShield = true }) {
-                    (UIImage(named: shieldAsset) != nil ? Image(shieldAsset).resizable().scaledToFit()
-                                                        : Image("AppShieldSquare").resizable().scaledToFit())
-                        .frame(width: 36, height: 36)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                        .padding(4)
-                        .offset(y: -2)
-                }
-                .accessibilityLabel("Open Journal shield")
+                (UIImage(named: shieldAsset) != nil ? Image(shieldAsset).resizable().scaledToFit()
+                                                    : Image("AppShieldSquare").resizable().scaledToFit())
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                    .padding(4)
+                    .offset(y: -2)
             }
-
             ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Text("Gratitude")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                }
-                .padding(.bottom, 10)
+                Text("Gratitude")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .padding(.bottom, 10)
             }
-
             ToolbarItem(placement: .navigationBarTrailing) {
                 Group {
                     if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
@@ -305,8 +291,6 @@ struct GratitudeEditorView: View {
                 .frame(width: 32, height: 32)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .offset(y: -2)
-                .onTapGesture { showProfileEdit = true }
-                .accessibilityLabel("Profile")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -316,46 +300,8 @@ struct GratitudeEditorView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-        // Footer re-tap (Journal) → pop
         .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
             dismiss()
         }
-
-        // Covers / sheets
-        .fullScreenCover(isPresented: $showShield) {
-            ShieldPage(imageName: (UIImage(named: shieldAsset) != nil ? shieldAsset : "AppShieldSquare"))
-        }
-        .sheet(isPresented: $showProfileEdit) {
-            ProfileEditView().environmentObject(store)
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func computeEditorHeight(for text: String) -> CGFloat {
-        let outerPadding: CGFloat = 16 * 2
-        let innerPadding: CGFloat = 12 * 2
-        let availableWidth: CGFloat = UIScreen.main.bounds.width - outerPadding - innerPadding
-        let string: NSString = (text.isEmpty ? " " : text) as NSString
-        let font = UIFont.preferredFont(forTextStyle: .body)
-        let maxSize = CGSize(width: availableWidth, height: .greatestFiniteMagnitude)
-        let rect = string.boundingRect(
-            with: maxSize,
-            options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: font],
-            context: nil
-        )
-        let base = ceil(rect.height) + 20 // padding inside the card
-        return max(180, base)
-    }
-
-    private func dateOnlyLabel(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "EEE, MMM d, yyyy"
-        return f.string(from: date)
-    }
-
-    private func dismissKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
