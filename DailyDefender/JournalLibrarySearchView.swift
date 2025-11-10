@@ -18,6 +18,7 @@ private func hasPrefixCI(_ s: String, _ prefix: String) -> Bool {
     return s.range(of: pat, options: [.regularExpression, .caseInsensitive]) != nil
 }
 
+
 // MARK: - Date helpers
 private func dateOnlyLabel(_ millis: Int64) -> String {
     let d = Date(timeIntervalSince1970: TimeInterval(millis) / 1000.0)
@@ -176,7 +177,7 @@ struct JournalLibrarySearchView: View {
     var allEntries: [JournalEntryIOS] = []
 
     // Callbacks
-    var onOpen: (JournalEntryIOS) -> Void = { _ in }
+    var onOpen: (JournalEntryIOS) -> Void = { _ in }  // kept for non-snapshot routes
     var onDelete: (_ ids: [Int64]) -> Void = { _ in }
 
     // Header actions
@@ -194,6 +195,9 @@ struct JournalLibrarySearchView: View {
     @State private var selected: Set<Int64> = []
     @State private var showDeleteConfirm = false
     @State private var sharePayload: SharePayload? = nil   // ← item-based share
+
+    // Snapshot viewer (read-only)
+    @State private var snapshotToView: JournalEntryIOS? = nil
 
     // Scroll-to-top trigger
     @State private var scrollResetToken = UUID()
@@ -270,7 +274,14 @@ struct JournalLibrarySearchView: View {
                         items: workingList,
                         selected: $selected,
                         hasSelection: hasSelection,
-                        onOpen: onOpen,
+                        onOpen: { e in
+                            // Route CSS/DVS to read-only; others to existing handler
+                            if isSnapshotEntry(e) {
+                                snapshotToView = e
+                            } else {
+                                onOpen(e)
+                            }
+                        },
                         scrollResetToken: scrollResetToken   // ← pass token
                     )
                     // Ensure last cell stays visible above the overlaid action bar + footer
@@ -341,6 +352,10 @@ struct JournalLibrarySearchView: View {
         // Item-based share presentation
         .sheet(item: $sharePayload) { payload in
             ShareSheet(items: payload.items)
+        }
+        // Read-only snapshot viewer (CSS/DVS)
+        .sheet(item: $snapshotToView) { entry in
+            JournalSnapshotView(entry: entry)
         }
 
         // Delete confirmation
@@ -523,7 +538,7 @@ private struct ResultsList: View {
                                 if hasSelection {
                                     if selected.contains(e.id) { selected.remove(e.id) } else { selected.insert(e.id) }
                                 } else {
-                                    onOpen(e)
+                                    onOpen(e) // routed by parent view to snapshot/editor
                                 }
                             }
                         )

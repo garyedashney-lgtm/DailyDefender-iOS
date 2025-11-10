@@ -33,14 +33,66 @@ struct GoalsView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 12) {
 
-                            // Monthly Goals
+                            // ===== Page Title & Subtitle (centered) =====
+                            VStack(spacing: 4) {
+                                Text("DEFENDER DESTINY")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                                    .multilineTextAlignment(.center)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+
+                                Text("Who Am I? Who Shall I Be?")
+                                    .font(.system(size: 16, weight: .regular))
+                                    .foregroundStyle(AppTheme.textSecondary.opacity(0.8))
+                                    .multilineTextAlignment(.center)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                            }
+                            .padding(.top, 6)
+                            .padding(.bottom, 12) // slightly tighter than before
+
+                            // ===== Who Am I? =====
+                            GoalsSectionHeader(title: "Who Am I?")
+
                             NavigationLink {
-                                MonthlyGoalsView().environmentObject(store)
+                                CurrentStateView()
+                                    .environmentObject(store)
                             } label: {
-                                GoalsCardRow(
-                                    title: "Monthly Goals",
-                                    subtitle: "Plan this month’s focus, milestones, and habits.",
-                                    emoji: "📅"
+                                GoalsCardRowSimple(
+                                    title: "Current State",
+                                    subtitle: "The full truth of where you are at now.",
+                                    emoji: "🧭"
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            // ↓ Reduced gap before next section title
+                            Spacer().frame(height: 0)
+
+                            // ===== Who Shall I Be? =====
+                            GoalsSectionHeader(title: "Who Shall I Be?")
+
+                            // Destiny Vision
+                            NavigationLink {
+                                DestinyVisionView()
+                                    .withKeyboardDismiss()
+                                    .environmentObject(store)      // keeps it consistent with CurrentStateView
+                            } label: {
+                                GoalsCardRowSimple(
+                                    title: "Destiny Vision",
+                                    subtitle: "Define your ‘I am / I will’ for each quadrant.",
+                                    emoji: "🧭"    // optional: change to "🚀" if you want Android parity
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            // Yearly Goals
+                            NavigationLink {
+                                YearlyGoalsView().environmentObject(store)
+                            } label: {
+                                GoalsCardRowSimple(
+                                    title: "Yearly Goals",
+                                    subtitle: "Set your North Star and anchor the year.",
+                                    emoji: "🗓️"
                                 )
                             }
                             .buttonStyle(.plain)
@@ -49,10 +101,22 @@ struct GoalsView: View {
                             NavigationLink {
                                 SeasonsGoalsView().environmentObject(store)
                             } label: {
-                                GoalsCardRow(
+                                GoalsCardRowSimple(
                                     title: "Seasonal Goals",
-                                    subtitle: "Zoom out by season for bigger arcs and outcomes.",
+                                    subtitle: "Break yearly focus down into seasons.",
                                     emoji: seasonEmoji
+                                )
+                            }
+                            .buttonStyle(.plain)
+
+                            // Monthly Goals
+                            NavigationLink {
+                                MonthlyGoalsView().environmentObject(store)
+                            } label: {
+                                GoalsCardRowSimple(
+                                    title: "Monthly Goals",
+                                    subtitle: "Plan this month’s focus and milestones.",
+                                    emoji: "📅"
                                 )
                             }
                             .buttonStyle(.plain)
@@ -77,26 +141,21 @@ struct GoalsView: View {
                             .clipShape(Circle())
                             .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
                             .padding(4)
-                            .offset(y: -2) // optical vertical centering
+                            .offset(y: -2)
                         }
                         .accessibilityLabel("Open page shield")
                     }
 
-                    // CENTER — Title + subtitle
+                    // CENTER — Title
                     ToolbarItem(placement: .principal) {
-                        VStack(spacing: 6) {
-                            HStack(spacing: 6) {
-                                Text("🎯")
-                                    .font(.system(size: 18, weight: .regular))
-                                Text("Goals")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(AppTheme.textPrimary)
-                            }
-                            Text("Monthly & seasonal outcomes")
-                                .font(.system(size: 12))
-                                .foregroundStyle(AppTheme.textSecondary)
+                        HStack(spacing: 6) {
+                            Text("🎯")
+                                .font(.system(size: 18, weight: .regular))
+                            Text("Goals")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(AppTheme.textPrimary)
                         }
-                        .padding(.bottom, 10) // space at bottom of header itself
+                        .padding(.bottom, 10)
                     }
 
                     // RIGHT — Profile avatar → ProfileEditView sheet
@@ -113,9 +172,9 @@ struct GoalsView: View {
                                     .foregroundStyle(.white, AppTheme.appGreen)
                             }
                         }
-                        .frame(width: 32, height: 32)                    // standardized size
-                        .clipShape(RoundedRectangle(cornerRadius: 8))    // standardized radius
-                        .offset(y: -2)                                    // optical center
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .offset(y: -2)
                         .onTapGesture { showProfileEdit = true }
                         .accessibilityLabel("Profile")
                     }
@@ -126,7 +185,7 @@ struct GoalsView: View {
                 .toolbarColorScheme(.dark, for: .navigationBar)
                 .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-                // Shield full-screen (uses identityncrisis; falls back if missing)
+                // Shield full-screen
                 .fullScreenCover(isPresented: $showGoalsShield) {
                     ShieldPage(
                         imageName: (UIImage(named: goalsShieldAsset) != nil ? goalsShieldAsset : "AppShieldSquare")
@@ -142,8 +201,20 @@ struct GoalsView: View {
     }
 }
 
-// MARK: - Card (no button; wrap with NavigationLink)
-private struct GoalsCardRow: View {
+// MARK: - Section Header
+private struct GoalsSectionHeader: View {
+    let title: String
+    var body: some View {
+        Text(title)
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(AppTheme.textPrimary)
+            .padding(.bottom, 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Card (accent + accessibility tweaks)
+private struct GoalsCardRowSimple: View {
     let title: String
     let subtitle: String
     let emoji: String
@@ -163,8 +234,8 @@ private struct GoalsCardRow: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                 Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(AppTheme.textSecondary)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(AppTheme.textSecondary.opacity(0.8))
             }
             Spacer()
             Image(systemName: "chevron.right")
@@ -176,5 +247,28 @@ private struct GoalsCardRow: View {
                 .fill(AppTheme.surfaceUI)
                 .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title). \(subtitle)")
+    }
+}
+
+// MARK: - Placeholder
+private struct ComingSoonView: View {
+    let title: String
+    var body: some View {
+        ZStack {
+            AppTheme.navy900.ignoresSafeArea()
+            VStack(spacing: 12) {
+                Text(title)
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                Text("This screen will be linked up soon.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+            .padding()
+        }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

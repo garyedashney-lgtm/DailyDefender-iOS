@@ -1,12 +1,14 @@
 import SwiftUI
+import Combine
 
-fileprivate struct SeasonGoalEntry: Identifiable, Equatable {
+// MARK: - Model (same row model as Monthly)
+fileprivate struct GoalEntry: Identifiable, Equatable {
     let id: Int64
     var text: String
     var done: Bool
 }
 
-// Android-parity codec
+// MARK: - Codec (parity with Android / Monthly)
 fileprivate let CONTROL: Character = "\u{0001}"
 fileprivate let SEP: Character = "|"
 
@@ -14,20 +16,21 @@ fileprivate func encodeOne(_ text: String, done: Bool) -> String {
     let flag = done ? "1" : "0"
     return "\(CONTROL)\(flag)\(SEP)\(text)"
 }
-fileprivate func decodeOne(_ raw: String) -> SeasonGoalEntry? {
-    if let f = raw.first, f == CONTROL {
+
+fileprivate func decodeOne(_ raw: String) -> GoalEntry? {
+    if let first = raw.first, first == CONTROL {
         let rest = raw.dropFirst()
         if let pipe = rest.firstIndex(of: SEP) {
-            let flag = String(rest[..<pipe])
+            let flag = String(rest[..<pipe])        // "0" or "1"
             let text = String(rest[rest.index(after: pipe)...])
-            return SeasonGoalEntry(id: -1, text: text, done: (flag == "1"))
+            return GoalEntry(id: -1, text: text, done: (flag == "1"))
         }
     }
     if raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return nil }
-    return SeasonGoalEntry(id: -1, text: raw, done: false)
+    return GoalEntry(id: -1, text: raw, done: false)
 }
 
-struct SeasonsGoalsView: View {
+struct YearlyGoalsView: View {
     @EnvironmentObject var store: HabitStore
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dismiss) private var dismiss
@@ -36,17 +39,14 @@ struct SeasonsGoalsView: View {
     @State private var showGoalsShield = false
     @State private var showProfileEdit = false
 
-    // Current season key like "2025-Winter"
-    @State private var currentKey: String = ""
-    @State private var titleParts: (name: String, year: Int) = ("", 0)
-
-    // In-memory list + edit state
-    @State private var goals: [SeasonGoalEntry] = []
-    @State private var isEditing = false
-    @State private var newGoalText = ""
+    // Year / data state
+    @State private var currentYear: Int = Calendar.current.component(.year, from: Date())
+    @State private var goals: [GoalEntry] = []
+    @State private var isEditing: Bool = false
+    @State private var newGoalText: String = ""
     @State private var nextId: Int64 = 1
 
-    // Focus (keep keyboard up on return)
+    // Focus management to keep keyboard up
     @FocusState private var focusedRow: Int64?
     @FocusState private var trailingFocused: Bool
 
@@ -57,10 +57,13 @@ struct SeasonsGoalsView: View {
             ScrollView {
                 VStack(spacing: 12) {
 
-                    seasonSelector
+                    // === Year selector ===
+                    yearSelector
 
+                    // === Goals card ===
                     goalsCard
 
+                    // === Controls (Edit / Save) ===
                     controlsRow
 
                     Spacer(minLength: 8)
@@ -70,36 +73,43 @@ struct SeasonsGoalsView: View {
                 .padding(.bottom, 36)
             }
         }
-        .withKeyboardDismiss()
+        .withKeyboardDismiss()                // Keeps green Done toolbar (optional) + background tap-to-dismiss
         .navigationBarBackButtonHidden(true)
+
+        // === Toolbar (match Goals/Monthly/Seasonal) ===
         .toolbar {
-            // LEFT — powernlove shield → full screen
+            // LEFT — Shield (full-screen cover)
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: { showGoalsShield = true }) {
-                    Image("powernlove")
-                        .resizable().scaledToFit()
-                        .frame(width: 36, height: 36)
-                        .clipShape(Circle())
-                        .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                        .padding(4)
-                        .offset(y: -2)
+                    (UIImage(named: "identityncrisis") != nil
+                     ? Image("identityncrisis").resizable().scaledToFit()
+                     : Image("AppShieldSquare").resizable().scaledToFit()
+                    )
+                    .frame(width: 36, height: 36)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                    .padding(4)
+                    .offset(y: -2)
                 }
                 .accessibilityLabel("Open page shield")
             }
-            // CENTER — Title (no subtitle)
+
+            // CENTER — Title
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {
                     Text("🎯").font(.system(size: 18, weight: .regular))
-                    Text("Season Goals")
+                    Text("Yearly Goals")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(AppTheme.textPrimary)
                 }
                 .padding(.bottom, 10)
             }
-            // RIGHT — Profile avatar → ProfileEdit
+
+            // RIGHT — Avatar → ProfileEdit
             ToolbarItem(placement: .navigationBarTrailing) {
                 Group {
-                    if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
+                    if let path = store.profile.photoPath,
+                       let ui = UIImage(contentsOfFile: path) {
                         Image(uiImage: ui).resizable().scaledToFill()
                     } else if UIImage(named: "ATMPic") != nil {
                         Image("ATMPic").resizable().scaledToFill()
@@ -112,7 +122,6 @@ struct SeasonsGoalsView: View {
                 .frame(width: 32, height: 32)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .offset(y: -2)
-                .contentShape(Rectangle())
                 .onTapGesture { showProfileEdit = true }
                 .accessibilityLabel("Profile")
             }
@@ -122,32 +131,29 @@ struct SeasonsGoalsView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
 
-        // Covers
+        // Shields / sheets
         .fullScreenCover(isPresented: $showGoalsShield) {
-            ShieldPage(imageName: "powernlove")
+            ShieldPage(imageName: (UIImage(named: "identityncrisis") != nil ? "identityncrisis" : "AppShieldSquare"))
         }
         .sheet(isPresented: $showProfileEdit) {
             ProfileEditView().environmentObject(store)
         }
 
-        // Seed/select initial season
-        .onAppear {
-            if currentKey.isEmpty {
-                currentKey = store.seasonKeyForToday()
-                titleParts = store.seasonTitleParts(currentKey)
-                seedFromStorage()
-            }
-        }
+        // Seed on appear
+        .onAppear { seedFromStorage() }
 
-        // Footer: Goals icon tapped → pop to Goals root
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reselectTab"))) { note in
-            if let page = note.object as? IosPage, page == .goals { dismiss() }
-        }
+        // Footer “Goals” tab → return to main Goals page
         .onReceive(NotificationCenter.default.publisher(for: .goalsTabTapped)) { _ in
             dismiss()
         }
+        // Also support the older/broader reselectTab pattern (parity with Monthly)
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reselectTab"))) { note in
+            if let page = note.object as? IosPage, page == .goals {
+                dismiss()
+            }
+        }
 
-        // Background autosave
+        // Autosave when app backgrounds
         .onChange(of: scenePhase) { phase in
             if phase == .background || phase == .inactive {
                 persistNow(includeTrailingNew: true)
@@ -155,39 +161,33 @@ struct SeasonsGoalsView: View {
         }
     }
 
-    // MARK: UI pieces
+    // MARK: - Subviews
 
-    private var seasonSelector: some View {
-        VStack(spacing: 2) {
-            HStack(alignment: .center, spacing: 8) {
-                Button { saveThenStep(by: -1) } label: {
-                    Image(systemName: "chevron.left")
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-                .accessibilityLabel("Previous season")
+    private var yearSelector: some View {
+        HStack(alignment: .center, spacing: 8) {
+            Button { saveThenStep(by: -1) } label: {
+                Image(systemName: "chevron.left")
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+            .accessibilityLabel("Previous year")
 
-                Spacer(minLength: 6)
+            Spacer(minLength: 6)
 
-                HStack(spacing: 6) {
-                    Text(store.seasonEmoji(titleParts.name)).font(.body)
-                    Text("\(titleParts.name) \(String(titleParts.year))")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                }
-
-                Spacer(minLength: 6)
-
-                Button { saveThenStep(by: +1) } label: {
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(AppTheme.textSecondary)
-                }
-                .accessibilityLabel("Next season")
+            HStack(spacing: 6) {
+                Text("📅").font(.body)
+                // No formatter → no commas in year
+                Text("Year \(String(currentYear))")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
             }
 
-            Text(store.seasonSpan(currentKey))
-                .font(.caption)
-                .foregroundStyle(AppTheme.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .center)
+            Spacer(minLength: 6)
+
+            Button { saveThenStep(by: +1) } label: {
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(AppTheme.textSecondary)
+            }
+            .accessibilityLabel("Next year")
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 6)
@@ -196,7 +196,7 @@ struct SeasonsGoalsView: View {
     private var goalsCard: some View {
         VStack(spacing: 6) {
             if goals.isEmpty && !isEditing {
-                Text("No goals yet for this season.")
+                Text("No goals yet for this year.")
                     .font(.subheadline)
                     .foregroundStyle(AppTheme.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -217,8 +217,9 @@ struct SeasonsGoalsView: View {
         )
     }
 
-    private func row(index: Int, entry: SeasonGoalEntry) -> some View {
+    private func row(index: Int, entry: GoalEntry) -> some View {
         HStack(spacing: 10) {
+            // Compact checkbox
             Button { toggleDone(index: index) } label: {
                 Image(systemName: entry.done ? "checkmark.square.fill" : "square")
                     .symbolRenderingMode(.palette)
@@ -230,17 +231,19 @@ struct SeasonsGoalsView: View {
             .accessibilityLabel(entry.done ? "Mark not done" : "Mark done")
 
             if isEditing {
+                // Editable row
                 TextField("Enter goal…", text: Binding(
                     get: { goals[index].text },
                     set: { newValue in
+                        // If a newline sneaks in (paste), split into a new row
                         if let nl = newValue.firstIndex(of: "\n") {
                             let before = String(newValue[..<nl])
                             let after = newValue[newValue.index(after: nl)...].trimmingCharacters(in: .whitespacesAndNewlines)
                             goals[index].text = before
                             if !after.isEmpty {
                                 let newId = nextIdAndBump()
-                                goals.insert(SeasonGoalEntry(id: newId, text: after, done: false), at: index + 1)
-                                focusedRow = newId
+                                goals.insert(GoalEntry(id: newId, text: after, done: false), at: index + 1)
+                                focusedRow = newId                      // keep keyboard up → focus new row
                             }
                             persistNow()
                         } else {
@@ -250,17 +253,18 @@ struct SeasonsGoalsView: View {
                 ))
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
-                .submitLabel(.return)
+                .submitLabel(.return)      // Return should add a row and KEEP focus/keyboard
                 .focused($focusedRow, equals: entry.id)
                 .onSubmit {
                     let t = goals[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !t.isEmpty else { return }
                     let newId = nextIdAndBump()
-                    goals.insert(SeasonGoalEntry(id: newId, text: "", done: false), at: index + 1)
+                    goals.insert(GoalEntry(id: newId, text: "", done: false), at: index + 1)
                     persistNow()
-                    focusedRow = newId
+                    focusedRow = newId      // ← immediately focus the new row (keyboard stays up)
                 }
 
+                // Delete
                 Button {
                     goals.remove(at: index)
                     persistNow()
@@ -271,6 +275,7 @@ struct SeasonsGoalsView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Delete")
             } else {
+                // Read-only
                 Text(entry.text)
                     .foregroundStyle(AppTheme.textPrimary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -293,9 +298,10 @@ struct SeasonsGoalsView: View {
                 .onSubmit {
                     let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !t.isEmpty else { return }
-                    goals.append(SeasonGoalEntry(id: nextIdAndBump(), text: t, done: false))
+                    goals.append(GoalEntry(id: nextIdAndBump(), text: t, done: false))
                     newGoalText = ""
                     persistNow()
+                    // Keep keyboard up on the trailing field so user can keep entering
                     trailingFocused = true
                 }
         }
@@ -307,14 +313,15 @@ struct SeasonsGoalsView: View {
             Spacer()
             if isEditing {
                 Button {
+                    // Fold trailing field, persist, exit edit mode
                     let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !t.isEmpty {
-                        goals.append(SeasonGoalEntry(id: nextIdAndBump(), text: t, done: false))
+                        goals.append(GoalEntry(id: nextIdAndBump(), text: t, done: false))
                         newGoalText = ""
                     }
                     persistNow()
                     isEditing = false
-                    hideKeyboardNow()
+                    dismissKeyboard()
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "square.and.arrow.down.fill")
@@ -328,6 +335,7 @@ struct SeasonsGoalsView: View {
             } else {
                 Button {
                     isEditing = true
+                    // Put cursor into trailing field if there are no rows, otherwise first row
                     if goals.isEmpty {
                         trailingFocused = true
                     } else {
@@ -348,7 +356,9 @@ struct SeasonsGoalsView: View {
         .padding(.top, 4)
     }
 
-    // MARK: logic
+    // MARK: - Actions / helpers
+
+    private func yearKey(_ y: Int) -> String { String(y) }
 
     private func nextIdAndBump() -> Int64 {
         defer { nextId &+= 1 }
@@ -358,28 +368,31 @@ struct SeasonsGoalsView: View {
     private func seedFromStorage() {
         goals.removeAll(keepingCapacity: true)
         nextId = 1
-        let raw = store.seasonGoals(for: currentKey)
+        let raw = store.yearlyGoals(for: yearKey(currentYear))
         for enc in raw {
             if var e = decodeOne(enc) {
-                e = SeasonGoalEntry(id: nextIdAndBump(), text: e.text, done: e.done)
+                e = GoalEntry(id: nextIdAndBump(), text: e.text, done: e.done)
                 goals.append(e)
             }
         }
         newGoalText = ""
-        titleParts = store.seasonTitleParts(currentKey)
     }
 
     private func persistNow(includeTrailingNew: Bool = false) {
         var payload: [String] = []
         for g in goals {
             let t = g.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty { payload.append(encodeOne(t, done: g.done)) }
+            if !t.isEmpty {
+                payload.append(encodeOne(t, done: g.done))
+            }
         }
         if includeTrailingNew {
             let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !t.isEmpty { payload.append(encodeOne(t, done: false)) }
+            if !t.isEmpty {
+                payload.append(encodeOne(t, done: false))
+            }
         }
-        store.setSeasonGoals(currentKey, payload)
+        store.setYearlyGoals(payload, for: yearKey(currentYear))
     }
 
     private func toggleDone(index: Int) {
@@ -388,19 +401,10 @@ struct SeasonsGoalsView: View {
         persistNow()
     }
 
-    private func saveThenStep(by delta: Int) {
-        hideKeyboardNow()
+    private func saveThenStep(by years: Int) {
+        dismissKeyboard()
         persistNow(includeTrailingNew: true)
-        currentKey = store.stepSeason(currentKey, by: delta)
+        currentYear += years
         seedFromStorage()
-    }
-}
-
-// MARK: - keyboard helper
-fileprivate extension View {
-    func hideKeyboardNow() {
-        #if canImport(UIKit)
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        #endif
     }
 }

@@ -8,7 +8,6 @@ extension Notification.Name {
 }
 
 // MARK: - Model
-
 fileprivate struct GoalEntry: Identifiable, Equatable {
     let id: Int64
     var text: String
@@ -16,7 +15,6 @@ fileprivate struct GoalEntry: Identifiable, Equatable {
 }
 
 // MARK: - Codec (parity with Android)
-
 fileprivate let CONTROL: Character = "\u{0001}"
 fileprivate let SEP: Character = "|"
 
@@ -41,7 +39,6 @@ fileprivate func decodeOne(_ raw: String) -> GoalEntry? {
 }
 
 // MARK: - View
-
 struct MonthlyGoalsView: View {
     @EnvironmentObject var store: HabitStore
     @Environment(\.scenePhase) private var scenePhase
@@ -58,7 +55,9 @@ struct MonthlyGoalsView: View {
     @State private var newGoalText: String = ""
     @State private var nextId: Int64 = 1
 
-    // MARK: - Lifecycle
+    // Focus management (keeps keyboard up on Return)
+    @FocusState private var focusedRow: Int64?
+    @FocusState private var trailingFocused: Bool
 
     var body: some View {
         ZStack {
@@ -83,10 +82,10 @@ struct MonthlyGoalsView: View {
                 .padding(.bottom, 36)
             }
         }
+        .withKeyboardDismiss()
         // Hide default back chevron to match main Goals header style
         .navigationBarBackButtonHidden(true)
 
-        .navigationBarBackButtonHidden(true) // match main Goals header (no chevron)
         .toolbar {
             // LEFT — Shield icon → FULL SCREEN cover
             ToolbarItem(placement: .navigationBarLeading) {
@@ -156,15 +155,15 @@ struct MonthlyGoalsView: View {
                 seedFromStorage()
             }
         }
+
+        // Footer “Goals” button → pop to Goals hub (both signals supported)
+        .onReceive(NotificationCenter.default.publisher(for: .goalsTabTapped)) { _ in
+            dismiss()
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("reselectTab"))) { note in
             if let page = note.object as? IosPage, page == .goals {
                 dismiss()
             }
-        }
-
-        // Listen for Footer "Goals" icon taps to return to main Goals page
-        .onReceive(NotificationCenter.default.publisher(for: .goalsTabTapped)) { _ in
-            dismiss()
         }
 
         // Autosave when app backgrounds
@@ -173,7 +172,6 @@ struct MonthlyGoalsView: View {
                 persistNow(includeTrailingNew: true)
             }
         }
-        
     }
 
     // MARK: - Subviews
@@ -247,7 +245,7 @@ struct MonthlyGoalsView: View {
             .accessibilityLabel(entry.done ? "Mark not done" : "Mark done")
 
             if isEditing {
-                // Editable text field; newline splits into a new row
+                // Editable text field; Return keeps keyboard up and adds a new row
                 TextField("Enter goal…", text: Binding(
                     get: { goals[index].text },
                     set: { newValue in
@@ -256,7 +254,9 @@ struct MonthlyGoalsView: View {
                             let after = newValue[newValue.index(after: nl)...].trimmingCharacters(in: .whitespacesAndNewlines)
                             goals[index].text = before
                             if !after.isEmpty {
-                                goals.insert(GoalEntry(id: nextIdAndBump(), text: after, done: false), at: index + 1)
+                                let newId = nextIdAndBump()
+                                goals.insert(GoalEntry(id: newId, text: after, done: false), at: index + 1)
+                                focusedRow = newId
                             }
                             persistNow()
                         } else {
@@ -266,7 +266,16 @@ struct MonthlyGoalsView: View {
                 ))
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
-                .submitLabel(.done)
+                .submitLabel(.return)
+                .focused($focusedRow, equals: entry.id)
+                .onSubmit {
+                    let t = goals[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !t.isEmpty else { return }
+                    let newId = nextIdAndBump()
+                    goals.insert(GoalEntry(id: newId, text: "", done: false), at: index + 1)
+                    persistNow()
+                    focusedRow = newId
+                }
 
                 // Delete affordance
                 Button {
@@ -297,13 +306,16 @@ struct MonthlyGoalsView: View {
             TextField("Add another goal…", text: $newGoalText)
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
-                .submitLabel(.done)
+                .submitLabel(.return)
+                .focused($trailingFocused)
                 .onSubmit {
                     let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !t.isEmpty else { return }
                     goals.append(GoalEntry(id: nextIdAndBump(), text: t, done: false))
                     newGoalText = ""
                     persistNow()
+                    // Keep keyboard up for rapid entry
+                    trailingFocused = true
                 }
         }
         .padding(.vertical, 4)
@@ -336,6 +348,12 @@ struct MonthlyGoalsView: View {
             } else {
                 Button {
                     isEditing = true
+                    // Put cursor into trailing field if there are no rows, otherwise first row
+                    if goals.isEmpty {
+                        trailingFocused = true
+                    } else {
+                        focusedRow = goals.first?.id
+                    }
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "pencil")
@@ -404,7 +422,6 @@ struct MonthlyGoalsView: View {
 }
 
 // MARK: - Small keyboard helper
-
 fileprivate extension View {
     func hideKeyboardNow() {
         #if canImport(UIKit)

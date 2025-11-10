@@ -96,7 +96,8 @@ struct DailyView: View {
                 .scrollContentBackground(.hidden)
                 .padding(.bottom, 48)
                 .modifier(CompactListTweaks())
-
+                .withKeyboardDismiss()
+                
                 // Confetti
                 if showConfetti {
                     ConfettiView()
@@ -113,8 +114,6 @@ struct DailyView: View {
             }
             .hidden()
 
-            // Tap outside to dismiss keyboard cleanly
-            .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
             // Toolbar
             .toolbar {
@@ -179,6 +178,7 @@ struct DailyView: View {
                     .accessibilityLabel("Profile")
                 }
             }
+            
 
             // Keep these AFTER .toolbar
             .navigationBarTitleDisplayMode(.inline)

@@ -187,7 +187,7 @@ struct WeeklyView: View {
                     .modifier(CompactListTweaks())
                 }
                 // Tap outside to dismiss keyboard (matches Daily)
-                .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
+                .withKeyboardDismiss()
                 
                 // === Toolbar (standardized like Daily) ===
                 .toolbar {
