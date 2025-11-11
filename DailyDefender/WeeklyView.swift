@@ -64,6 +64,10 @@ struct WeeklyView: View {
     @State private var showClearAlert = false
     @State private var didHydrateOnce = false
 
+    // Focus state for auto-scrolling & headroom
+    @State private var anyEditorFocused = false
+    @State private var focusedAnchor: String? = nil
+
     // Debounced save
     @State private var saveWork: DispatchWorkItem?
     private func scheduleSave() {
@@ -78,11 +82,10 @@ struct WeeklyView: View {
             PaywallCardView(title: "Pro Feature")
         } else {
             NavigationStack {
-                ZStack {
-                    AppTheme.navy900.ignoresSafeArea()
+                ScrollViewReader { proxy in
+                    ZStack {
+                        AppTheme.navy900.ignoresSafeArea()
 
-                    // ScrollViewReader added for auto-scroll when an editor gains focus
-                    ScrollViewReader { proxy in
                         List {
                             // === Progress strip ===
                             Section {
@@ -101,90 +104,114 @@ struct WeeklyView: View {
 
                             // === Wins / Losses ===
                             weeklySection(
+                                anchorId: "wins",
                                 title: "Wins / Losses",
                                 countText: nil,
                                 subtitle: "",
                                 text: $winsLosses,
                                 placeholder: "type your notes here…",
-                                editorId: "wins",
-                                proxy: proxy
+                                onFocus: { focused in
+                                    anyEditorFocused = focused
+                                    if focused { scrollTo("wins", proxy: proxy) }
+                                }
                             )
 
                             // === Physiology ===
                             weeklySection(
+                                anchorId: "phys",
                                 title: "Physiology",
                                 countText: "\(physCount)/\(perPillarCap)",
                                 subtitle: "   The body is the universal address of your existence",
                                 text: $phys,
                                 placeholder: "type your notes here…",
-                                editorId: "phys",
-                                proxy: proxy
+                                onFocus: { f in
+                                    anyEditorFocused = f
+                                    if f { scrollTo("phys", proxy: proxy) }
+                                }
                             )
 
                             // === Piety ===
                             weeklySection(
+                                anchorId: "piety",
                                 title: "Piety",
                                 countText: "\(pietyCount)/\(perPillarCap)",
                                 subtitle: "   Using mystery & awe as the spirit speaks for the soul",
                                 text: $prayer,
                                 placeholder: "type your notes here…",
-                                editorId: "piety",
-                                proxy: proxy
+                                onFocus: { f in
+                                    anyEditorFocused = f
+                                    if f { scrollTo("piety", proxy: proxy) }
+                                }
                             )
 
                             // === People ===
                             weeklySection(
+                                anchorId: "people",
                                 title: "People",
                                 countText: "\(peopleCount)/\(perPillarCap)",
                                 subtitle: "   Team Human: herd animals who exist in each other",
                                 text: $people,
                                 placeholder: "type your notes here…",
-                                editorId: "people",
-                                proxy: proxy
+                                onFocus: { f in
+                                    anyEditorFocused = f
+                                    if f { scrollTo("people", proxy: proxy) }
+                                }
                             )
 
                             // === Production ===
                             weeklySection(
+                                anchorId: "prod",
                                 title: "Production",
                                 countText: "\(prodCount)/\(perPillarCap)",
                                 subtitle: "   A man produces more than he consumes",
                                 text: $production,
                                 placeholder: "type your notes here…",
-                                editorId: "prod",
-                                proxy: proxy
+                                onFocus: { f in
+                                    anyEditorFocused = f
+                                    if f { scrollTo("prod", proxy: proxy) }
+                                }
                             )
 
                             // === 🎯 Carryover Done? ===
                             weeklyCarryoverSection(
+                                anchorId: "carry",
                                 leadingEmoji: "🎯",
                                 title: "This Week’s One Thing Done?",
                                 text: $carryText,
                                 isDone: $carryDone,
                                 placeholder: "— none set last week —",
-                                editorId: "carry",
-                                proxy: proxy
+                                onFocus: { f in
+                                    anyEditorFocused = f
+                                    if f { scrollTo("carry", proxy: proxy) }
+                                }
                             )
 
                             // === 🎯 One Thing Next Week ===
                             weeklySimpleSection(
+                                anchorId: "next",
                                 leadingEmoji: "🎯",
                                 title: "One Thing for Next Week",
                                 subtitle: "",
                                 text: $oneThingNextWeek,
                                 placeholder: "type your notes here…",
-                                editorId: "oneNext",
-                                proxy: proxy
+                                onFocus: { f in
+                                    anyEditorFocused = f
+                                    if f { scrollTo("next", proxy: proxy) }
+                                }
                             )
 
                             // === 📓 Extra Notes ===
                             weeklySimpleSection(
+                                anchorId: "notes",
                                 leadingEmoji: "📓",
                                 title: "Extra Notes",
                                 subtitle: "",
                                 text: $journalNotes,
                                 placeholder: "type your extra notes here…",
-                                editorId: "notes",
-                                proxy: proxy
+                                onFocus: { f in
+                                    anyEditorFocused = f
+                                    if f { scrollTo("notes", proxy: proxy) }
+                                }
                             )
 
                             // === Clear / Share row ===
@@ -226,6 +253,7 @@ struct WeeklyView: View {
                             .listRowSeparator(.hidden)
                             .listRowBackground(AppTheme.navy900)
 
+                            // Bottom spacer so the last section isn't cramped
                             Section { Color.clear.frame(height: 56) }
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(AppTheme.navy900)
@@ -235,8 +263,12 @@ struct WeeklyView: View {
                         .scrollDismissesKeyboard(.interactively)
                         .modifier(CompactListTweaks())
                     }
+                    .withKeyboardDismiss()
+                    // Fixed headroom when an editor is focused (no keyboard math)
+                    .safeAreaInset(edge: .bottom) {
+                        Color.clear.frame(height: anyEditorFocused ? 96 : 48)
+                    }
                 }
-                .withKeyboardDismiss()
 
                 // Toolbar
                 .toolbar {
@@ -289,7 +321,6 @@ struct WeeklyView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbarBackground(AppTheme.navy900, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
-                .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
                 // Shield
                 .fullScreenCover(isPresented: $showShield) { ShieldPage(imageName: "four_ps") }
@@ -331,16 +362,26 @@ struct WeeklyView: View {
         }
     }
 
+    // Smooth scroll helper
+    private func scrollTo(_ id: String, proxy: ScrollViewProxy) {
+        focusedAnchor = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                proxy.scrollTo(id, anchor: .bottom)
+            }
+        }
+    }
+
     // MARK: Sections
     @ViewBuilder
     private func weeklySection(
+        anchorId: String,
         title: String,
         countText: String?,
         subtitle: String,
         text: Binding<String>,
         placeholder: String,
-        editorId: String,
-        proxy: ScrollViewProxy
+        onFocus: @escaping (Bool) -> Void
     ) -> some View {
         Section {
             HStack(spacing: 8) {
@@ -372,24 +413,24 @@ struct WeeklyView: View {
             BulletNotesCard(
                 text: text,
                 placeholder: placeholder,
-                onBeginEditing: { withAnimation { proxy.scrollTo(editorId, anchor: .top) } }
+                onFocusChange: onFocus
             )
-            .id(editorId)
             .listRowInsets(.init(top: 0, leading: 0, bottom: 6, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
+            .id(anchorId)
         }
     }
 
     @ViewBuilder
     private func weeklySimpleSection(
+        anchorId: String,
         leadingEmoji: String? = nil,
         title: String,
         subtitle: String,
         text: Binding<String>,
         placeholder: String,
-        editorId: String,
-        proxy: ScrollViewProxy
+        onFocus: @escaping (Bool) -> Void
     ) -> some View {
         Section {
             OneLineHeaderRow(leadingEmoji: leadingEmoji, title: title)
@@ -410,24 +451,24 @@ struct WeeklyView: View {
             BulletNotesCard(
                 text: text,
                 placeholder: placeholder,
-                onBeginEditing: { withAnimation { proxy.scrollTo(editorId, anchor: .top) } }
+                onFocusChange: onFocus
             )
-            .id(editorId)
             .listRowInsets(.init(top: 0, leading: 0, bottom: 6, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
+            .id(anchorId)
         }
     }
 
     @ViewBuilder
     private func weeklyCarryoverSection(
+        anchorId: String,
         leadingEmoji: String? = nil,
         title: String,
         text: Binding<String>,
         isDone: Binding<Bool>,
         placeholder: String,
-        editorId: String,
-        proxy: ScrollViewProxy
+        onFocus: @escaping (Bool) -> Void
     ) -> some View {
         Section {
             HStack(spacing: 8) {
@@ -458,12 +499,12 @@ struct WeeklyView: View {
             BulletNotesCard(
                 text: text,
                 placeholder: placeholder,
-                onBeginEditing: { withAnimation { proxy.scrollTo(editorId, anchor: .top) } }
+                onFocusChange: onFocus
             )
-            .id(editorId)
             .listRowInsets(.init(top: 0, leading: 0, bottom: 6, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
+            .id(anchorId)
         }
     }
 
@@ -539,6 +580,7 @@ struct WeeklyView: View {
     // MARK: Share
     private func shareWeeklySummary() {
         func bulletedForShare(_ s: String) -> String {
+            // For share only: ensure each non-empty line starts with •
             let lines = s.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
             return lines.map { line in
                 let t = line.trimmingCharacters(in: .whitespaces)
@@ -615,17 +657,17 @@ private struct OneLineHeaderRow<Trailing: View>: View {
     }
 }
 
-// MARK: - BulletNotesCard (auto-grow + wrap) — with onBeginEditing for auto-scroll
+// MARK: - BulletNotesCard (auto-grow + wrap)
 private struct BulletNotesCard: View {
     @Binding var text: String
     let placeholder: String
-    var onBeginEditing: () -> Void = {}
+    var onFocusChange: ((Bool) -> Void)? = nil
     @State private var measuredHeight: CGFloat = 46
 
-    init(text: Binding<String>, placeholder: String, onBeginEditing: @escaping () -> Void = {}) {
+    init(text: Binding<String>, placeholder: String, onFocusChange: ((Bool) -> Void)? = nil) {
         _text = text
         self.placeholder = placeholder
-        self.onBeginEditing = onBeginEditing
+        self.onFocusChange = onFocusChange
     }
 
     var body: some View {
@@ -638,11 +680,9 @@ private struct BulletNotesCard: View {
                 placeholder: placeholder,
                 onHeightChange: { h in
                     let clamped = max(46, ceil(h))
-                    if abs(clamped - measuredHeight) > 0.5 {
-                        measuredHeight = clamped
-                    }
+                    if abs(clamped - measuredHeight) > 0.5 { measuredHeight = clamped }
                 },
-                onBeginEditing: onBeginEditing
+                onFocusChange: onFocusChange
             )
             .frame(height: measuredHeight)
             .background(Color.clear)
@@ -652,12 +692,12 @@ private struct BulletNotesCard: View {
     }
 }
 
-// MARK: - BulletTextViewSimple (measures sizeThatFits for word-wrap)
+// MARK: - BulletTextViewSimple (measures sizeThatFits for word-wrap + focus callback)
 private struct BulletTextViewSimple: UIViewRepresentable {
     @Binding var text: String
     var placeholder: String
     var onHeightChange: (CGFloat) -> Void
-    var onBeginEditing: () -> Void = {}
+    var onFocusChange: ((Bool) -> Void)?
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
@@ -698,6 +738,7 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         tv.text = text
         label.isHidden = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
+        // initial measurement
         DispatchQueue.main.async { self.remeasure(tv) }
         return tv
     }
@@ -708,7 +749,6 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         }
         context.coordinator.placeholderLabel?.isHidden =
             !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-
         DispatchQueue.main.async { self.remeasure(uiView) }
     }
 
@@ -727,13 +767,14 @@ private struct BulletTextViewSimple: UIViewRepresentable {
                 parent.text = textView.text
             }
             placeholderLabel?.isHidden = true
-            parent.onBeginEditing()              // trigger scrollTo for this field
+            parent.onFocusChange?(true)
             parent.remeasure(textView)
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
             let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
             placeholderLabel?.isHidden = !trimmed.isEmpty
+            parent.onFocusChange?(false)
             parent.remeasure(textView)
         }
 
@@ -795,18 +836,16 @@ private struct CheckSquare: View {
     }
 }
 
-// MARK: - Compact list tweaks (fixed signature)
+// MARK: - Compact list tweaks
 private struct CompactListTweaks: ViewModifier {
     func body(content: Content) -> some View {
-        Group {
-            if #available(iOS 17.0, *) {
-                content
-                    .contentMargins(.vertical, 0)
-                    .listSectionSpacing(.compact)
-                    .listRowSpacing(0)
-            } else {
-                content
-            }
+        if #available(iOS 17.0, *) {
+            content
+                .contentMargins(.vertical, 0)
+                .listSectionSpacing(.compact)
+                .listRowSpacing(0)
+        } else {
+            content
         }
     }
 }
