@@ -97,19 +97,22 @@ struct DailyView: View {
                         }
 
                         // To-Do
-                        todoBlock(extraBottom: keyboardExtraPadding())
+                        todoBlock()
+
+                        // Small bottom spacer so you can always scroll past the last card
+                        Section { Color.clear.frame(height: 24) }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(AppTheme.navy900)
                     }
                     .listStyle(.plain)
                     .scrollDismissesKeyboard(.interactively)
                     .scrollContentBackground(.hidden)
-                    // REMOVED: .padding(.bottom, 48)
                     .modifier(CompactListTweaks())
                     .withKeyboardDismiss()
                 }
-                // Like Weekly: small fixed headroom when editing/keyboard is up
                 .safeAreaInset(edge: .bottom) {
                     Color.clear
-                        .frame(height: (keyboardVisible || anyEditorFocused) ? 96 : 48)
+                        .frame(height: (keyboardVisible || anyEditorFocused) ? 104 : 64)
                         .allowsHitTesting(false)
                 }
             }
@@ -124,7 +127,6 @@ struct DailyView: View {
 
             // Toolbar
             .toolbar {
-                // LEFT — 4Ps
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showFourPs = true }) {
                         Image("four_ps")
@@ -138,7 +140,6 @@ struct DailyView: View {
                     .accessibilityLabel("Open 4 Ps Shield")
                 }
 
-                // CENTER — title/date
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 2) {
                         HStack(spacing: 8) {
@@ -162,7 +163,6 @@ struct DailyView: View {
                     }
                 }
 
-                // RIGHT — avatar → ProfileEdit
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
                         if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
@@ -236,14 +236,6 @@ struct DailyView: View {
         }
     }
 
-    // Extra List spacer only when keyboard is up (keeps bottom card off the keyboard)
-    private func keyboardExtraPadding() -> CGFloat {
-        // No longer used for inset height; kept if you need it later
-        guard keyboardVisible else { return 0 }
-        let cushion: CGFloat = 28
-        return min(max(keyboardHeight + cushion, 140), 280)
-    }
-
     private func extractKeyboardHeight(from note: Notification) -> CGFloat? {
         guard
             let info = note.userInfo,
@@ -289,7 +281,6 @@ struct DailyView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            // Notes card — auto-grow, wraps, paragraph spacing and focus headroom
             PlainNotesCard(
                 text: persistedFocus(for: pid),
                 placeholder: "Focused activity?",
@@ -307,9 +298,9 @@ struct DailyView: View {
         }
     }
 
-    // MARK: - To-Do (Monthly look + Android behavior)
+    // MARK: - To-Do list
     @ViewBuilder
-    private func todoBlock(extraBottom: CGFloat) -> some View {
+    private func todoBlock() -> some View {
         Section {
             HStack(spacing: 8) {
                 Text("📝 To-Do List")
@@ -328,7 +319,6 @@ struct DailyView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            // Checklist card
             TodoListCard(persistKey: TODO_PERSIST_KEY, todayString: todayString)
                 .padding(.top, 8)
                 .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -339,12 +329,8 @@ struct DailyView: View {
 
     // Pillar focus persistence
     private func focusKey(_ pid: String) -> String { "focus_\(pid)" }
-    private func persistedFocus(for pid: String) -> String {
-        UserDefaults.standard.string(forKey: focusKey(pid)) ?? ""
-    }
-    private func setPersistedFocus(_ v: String, for pid: String) {
-        UserDefaults.standard.set(v, forKey: focusKey(pid))
-    }
+    private func persistedFocus(for pid: String) -> String { UserDefaults.standard.string(forKey: focusKey(pid)) ?? "" }
+    private func setPersistedFocus(_ v: String, for pid: String) { UserDefaults.standard.set(v, forKey: focusKey(pid)) }
 
     // Celebrations (UNCHANGED)
     private func fireConfettiAndAudio() {
@@ -354,9 +340,7 @@ struct DailyView: View {
             audioPlayer = try? AVAudioPlayer(contentsOf: url)
             audioPlayer?.play()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-            showConfetti = false
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { showConfetti = false }
     }
 }
 
@@ -380,7 +364,7 @@ private struct CheckSquare: View {
     }
 }
 
-// PlainNotesCard updated to match Weekly's behavior (auto-grow, wrap, paragraph spacing, focus headroom)
+// PlainNotesCard — Weekly-style auto-growing UITextView
 private struct PlainNotesCard: View {
     @State private var textInternal: String
     @State private var measuredHeight: CGFloat = 46
@@ -403,7 +387,6 @@ private struct PlainNotesCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AppTheme.surfaceUI)
 
-            // Lightweight placeholder overlay
             if textInternal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(placeholder)
                     .font(.callout.italic())
@@ -422,15 +405,18 @@ private struct PlainNotesCard: View {
                 onFocusChange: onFocusChange
             )
             .frame(height: measuredHeight)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
             .background(Color.clear)
             .onChange(of: textInternal) { onChange($0) }
         }
+        .frame(maxWidth: .infinity)
         .padding(.horizontal, 0)
         .padding(.bottom, 4)
     }
 }
 
-// Auto-growing UITextView with wrapping + paragraph spacing (no bullets)
+// Auto-growing UITextView with wrapping + paragraph spacing (for pillar notes)
 private struct AutoGrowTextView: UIViewRepresentable {
     @Binding var text: String
     var onHeightChange: (CGFloat) -> Void
@@ -456,7 +442,7 @@ private struct AutoGrowTextView: UIViewRepresentable {
         tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
         tv.delegate = context.coordinator
 
-        // Paragraph spacing to mimic "Return = paragraph space"
+        // Paragraph spacing
         let ps = NSMutableParagraphStyle()
         ps.lineBreakMode = .byWordWrapping
         ps.paragraphSpacing = 6
@@ -475,7 +461,6 @@ private struct AutoGrowTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextView, context: Context) {
         if uiView.text != text { uiView.text = text }
-        // Keep paragraph style applied even if attributes reset
         var attrs = uiView.typingAttributes
         attrs[.paragraphStyle] = context.coordinator.typingParagraphStyle
         attrs[.foregroundColor] = UIColor.white
@@ -496,14 +481,11 @@ private struct AutoGrowTextView: UIViewRepresentable {
             parent.onFocusChange?(true)
             parent.remeasure(textView)
         }
-
         func textViewDidEndEditing(_ textView: UITextView) {
             parent.onFocusChange?(false)
             parent.remeasure(textView)
         }
-
         func textViewDidChange(_ textView: UITextView) {
-            // Ensure the paragraph style persists for newly typed text
             if let ps = typingParagraphStyle {
                 var attrs = textView.typingAttributes
                 attrs[.paragraphStyle] = ps
@@ -526,7 +508,376 @@ private struct AutoGrowTextView: UIViewRepresentable {
     }
 }
 
-// Compact list tweaks
+// ===== To-Do List (wrapping + id-based mutation to avoid index crashes) =====
+private struct TodoListCard: View {
+    let persistKey: String
+    let todayString: String
+
+    private let CONTROL: Character = "\u{0001}"
+    private let SEP: Character = "|"
+    private let ITEM_SEP: Character = "\u{0002}"
+
+    struct TodoItem: Identifiable, Equatable {
+        var id: UUID
+        var text: String
+        var done: Bool
+        var checkedOn: String
+    }
+
+    @State private var items: [TodoItem] = []
+    @State private var focusedId: UUID?
+    @State private var caretToEndId: UUID?
+
+    var body: some View {
+        VStack(spacing: 4) {
+            VStack(spacing: 0) {
+                if items.isEmpty {
+                    Button {
+                        let new = TodoItem(id: UUID(), text: "", done: false, checkedOn: "")
+                        items.append(new); save(); focusedId = new.id
+                    } label: {
+                        HStack(alignment: .center, spacing: 6) {
+                            Image(systemName: "square")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(AppTheme.textPrimary, .clear)
+                                .font(.title3)
+                            Text("Enter to-do…")
+                                .font(.callout.italic())
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 6)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                }
+
+                ForEach(items) { item in
+                    TodoRowView(
+                        item: item,
+                        isFocused: focusedId == item.id,
+                        moveCaretToEnd: caretToEndId == item.id,
+                        onBeginEditing: { focusedId = item.id },
+
+                        onChange: { newText in
+                            guard let i = index(for: item.id) else { return }
+                            items[i].text = newText
+                            save()
+                        },
+
+                        onSplitAtNewline: { before, after in
+                            // Finish editing current row text and insert a new row after it.
+                            resignFirstResponder()
+                            guard let i = index(for: item.id) else { return }
+                            items[i].text = before
+                            let new = TodoItem(id: UUID(), text: after, done: false, checkedOn: "")
+                            items.insert(new, at: i + 1)
+                            save()
+                            focusedId = new.id
+                        },
+
+                        onBackspaceAtStart: {
+                            // Merge with previous item (focus previous, caret to end)
+                            resignFirstResponder()
+                            guard let i = index(for: item.id), i > 0 else { return }
+                            let prevId = items[i - 1].id
+                            items.remove(at: i)
+                            save()
+                            focusedId = prevId
+                            caretToEndId = prevId
+                        },
+
+                        onBlurEmpty: {
+                            // Remove empty row only if still present
+                            guard let i = index(for: item.id) else { return }
+                            if items[i].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                               !items[i].done {
+                                items.remove(at: i)
+                                save()
+                            }
+                        },
+
+                        onToggleDone: {
+                            guard let i = index(for: item.id) else { return }
+                            items[i].done.toggle()
+                            items[i].checkedOn = items[i].done ? todayString : ""
+                            save()
+                        },
+
+                        onDelete: {
+                            resignFirstResponder()
+                            guard let i = index(for: item.id) else { return }
+                            items.remove(at: i)
+                            save()
+                        }
+                    )
+                }
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.surfaceUI)
+                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+            )
+        }
+        .padding(.horizontal, 0)
+        .padding(.vertical, 4)
+        .onAppear {
+            items = load()
+            pruneCheckedFromPriorDays()
+            pruneEmptyRows()
+            save()
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func index(for id: UUID) -> Int? {
+        items.firstIndex { $0.id == id }
+    }
+
+    private func resignFirstResponder() {
+        #if canImport(UIKit)
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                        to: nil, from: nil, for: nil)
+        #endif
+    }
+
+    // Cleanup & persistence
+    private func pruneCheckedFromPriorDays() {
+        items.removeAll { $0.done && !$0.checkedOn.isEmpty && $0.checkedOn != todayString }
+    }
+    private func pruneEmptyRows() {
+        items.removeAll { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.done }
+    }
+
+    private func load() -> [TodoItem] {
+        let blob = UserDefaults.standard.string(forKey: persistKey) ?? ""
+        guard !blob.isEmpty else { return [] }
+        let parts = blob.split(separator: ITEM_SEP, omittingEmptySubsequences: true)
+        var out: [TodoItem] = []
+        for p in parts {
+            let s = String(p)
+            if let item = decodeOne(s) { out.append(item) }
+        }
+        // give each item a fresh UUID on load
+        return out.map { TodoItem(id: UUID(), text: $0.text, done: $0.done, checkedOn: $0.checkedOn) }
+    }
+
+    private func save() {
+        let payload = items
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.done }
+            .map { encodeOne($0) }
+            .joined(separator: String(ITEM_SEP))
+        UserDefaults.standard.set(payload, forKey: persistKey)
+    }
+
+    private func encodeOne(_ item: TodoItem) -> String {
+        let flag = item.done ? "1" : "0"
+        let safeText = item.text.replacingOccurrences(of: String(ITEM_SEP), with: " ")
+        return "\(CONTROL)\(flag)\(SEP)\(item.checkedOn)\(SEP)\(safeText)"
+    }
+
+    private func decodeOne(_ raw: String) -> TodoItem? {
+        guard !raw.isEmpty else { return nil }
+        var rest = raw
+        guard rest.first == CONTROL else {
+            return TodoItem(id: UUID(), text: raw, done: false, checkedOn: "")
+        }
+        rest.removeFirst()
+        guard let i1 = rest.firstIndex(of: SEP) else { return nil }
+        let flag = String(rest[..<i1]) == "1"
+        let r1 = rest[rest.index(after: i1)...]
+        guard let i2 = r1.firstIndex(of: SEP) else { return nil }
+        let checked = String(r1[..<i2])
+        let text = String(r1[r1.index(after: i2)...])
+        return TodoItem(id: UUID(), text: text, done: flag, checkedOn: checked)
+    }
+}
+
+// One row with auto-growing editor + trailing trash outside input area
+private struct TodoRowView: View {
+    var item: TodoListCard.TodoItem
+    var isFocused: Bool
+    var moveCaretToEnd: Bool
+    var onBeginEditing: () -> Void
+    var onChange: (String) -> Void
+    var onSplitAtNewline: (_ before: String, _ after: String) -> Void
+    var onBackspaceAtStart: () -> Void
+    var onBlurEmpty: () -> Void
+    var onToggleDone: () -> Void
+    var onDelete: () -> Void
+
+    @State private var textInternal: String = ""
+    @State private var measuredHeight: CGFloat = 22
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            // Checkbox (fixed)
+            Button(action: onToggleDone) {
+                Image(systemName: item.done ? "checkmark.square.fill" : "square")
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(item.done ? .white : AppTheme.textPrimary,
+                                     item.done ? AppTheme.appGreen : .clear)
+                    .font(.title3)
+                    .frame(width: 28, height: 28, alignment: .center)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+
+            // Editor column (flexible, wraps)
+            VStack(spacing: 0) {
+                AutoGrowRowTextView(
+                    text: textInternal,
+                    isFocused: isFocused,
+                    moveCaretToEnd: moveCaretToEnd,
+                    onBeginEditing: onBeginEditing,
+                    onChange: { newText in
+                        textInternal = newText
+                        onChange(newText)
+                    },
+                    onSplitAtNewline: onSplitAtNewline,
+                    onBackspaceAtStart: onBackspaceAtStart,
+                    onBlurEmpty: onBlurEmpty,
+                    onHeightChange: { h in
+                        let hClamped = max(22, ceil(h))
+                        if abs(hClamped - measuredHeight) > 0.5 { measuredHeight = hClamped }
+                    }
+                )
+                .frame(height: measuredHeight)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .layoutPriority(1)
+            }
+
+            // Trash (fixed, outside input area)
+            Button(action: onDelete) {
+                Image(systemName: "trash")
+                    .font(.body)
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .opacity(textInternal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.35 : 0.9)
+                    .frame(width: 28, height: 28, alignment: .center)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 2)
+        }
+        .onAppear { textInternal = item.text }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+    }
+}
+
+// Auto-grow UITextView specialized for To-Do rows (wraps, measures height)
+private struct AutoGrowRowTextView: UIViewRepresentable {
+    var text: String
+    var isFocused: Bool
+    var moveCaretToEnd: Bool
+    var onBeginEditing: () -> Void
+    var onChange: (String) -> Void
+    var onSplitAtNewline: (_ before: String, _ after: String) -> Void
+    var onBackspaceAtStart: () -> Void
+    var onBlurEmpty: () -> Void
+    var onHeightChange: (CGFloat) -> Void
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.backgroundColor = .clear
+        tv.textColor = UIColor.white
+        tv.tintColor = UIColor(AppTheme.appGreen)
+        tv.font = UIFont.preferredFont(forTextStyle: .body)
+        tv.isScrollEnabled = false
+        tv.keyboardDismissMode = .interactive
+        tv.textContainer.lineFragmentPadding = 0
+        tv.textContainerInset = UIEdgeInsets(top: 2, left: 0, bottom: 2, right: 0)
+        tv.textContainer.widthTracksTextView = true
+        tv.textContainer.lineBreakMode = .byWordWrapping
+        tv.autocorrectionType = .yes
+        tv.autocapitalizationType = .sentences
+        tv.smartDashesType = .no
+        tv.smartQuotesType = .no
+        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        tv.delegate = context.coordinator
+        tv.text = text
+
+        DispatchQueue.main.async { self.remeasure(tv) }
+        return tv
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.text != text { uiView.text = text }
+
+        if isFocused, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+            if moveCaretToEnd {
+                let ns = uiView.text as NSString
+                uiView.selectedRange = NSRange(location: ns.length, length: 0)
+            }
+        }
+        DispatchQueue.main.async { self.remeasure(uiView) }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: AutoGrowRowTextView
+        init(_ parent: AutoGrowRowTextView) { self.parent = parent }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.onBeginEditing()
+            parent.remeasure(textView)
+        }
+
+        func textView(_ textView: UITextView,
+                      shouldChangeTextIn range: NSRange,
+                      replacementText text: String) -> Bool {
+            if text == "\n" {
+                let ns = textView.text as NSString
+                let before = ns.substring(to: range.location)
+                let after  = ns.substring(from: range.location)
+                textView.text = before
+                parent.onChange(before)
+                DispatchQueue.main.async { self.parent.onSplitAtNewline(before, after) }
+                parent.remeasure(textView)
+                return false
+            }
+            if text.isEmpty && range.length == 1 && range.location == 0 {
+                if let sel = textView.selectedTextRange,
+                   textView.offset(from: textView.beginningOfDocument, to: sel.start) == 0,
+                   textView.offset(from: sel.start, to: sel.end) == 0 {
+                    parent.onBackspaceAtStart()
+                    return false
+                }
+            }
+            return true
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.onChange(textView.text ?? "")
+            parent.remeasure(textView)
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            let txt = (textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if txt.isEmpty { parent.onBlurEmpty() }
+            parent.remeasure(textView)
+        }
+    }
+
+    fileprivate func remeasure(_ tv: UITextView) {
+        var targetWidth = tv.bounds.width
+        if targetWidth <= 0 {
+            // leave room for checkbox (28 + spacing) and trash (28 + spacing) and card padding
+            targetWidth = UIScreen.main.bounds.width - 32 - 28 - 8 - 28 - 12
+        }
+        let size = tv.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+        onHeightChange(size.height)
+    }
+}
+
+// Compact list tweaks (needed on iOS 17+ to tighten spacing)
 private struct CompactListTweaks: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -594,259 +945,4 @@ private struct ConfettiView: UIViewRepresentable {
         return view
     }
     func updateUIView(_ uiView: UIView, context: Context) {}
-}
-
-// ===== To-Do List (Monthly look + Android behavior, tighter spacing) =====
-private struct TodoListCard: View {
-    let persistKey: String
-    let todayString: String
-
-    private let CONTROL: Character = "\u{0001}"
-    private let SEP: Character = "|"
-    private let ITEM_SEP: Character = "\u{0002}"
-
-    struct TodoItem: Identifiable, Equatable {
-        var id: UUID
-        var text: String
-        var done: Bool
-        var checkedOn: String
-    }
-
-    @State private var items: [TodoItem] = []
-    @State private var focusedId: UUID?
-    @State private var caretToEndId: UUID?
-
-    var body: some View {
-        VStack(spacing: 4) {
-            VStack(spacing: 0) {
-                if items.isEmpty {
-                    Button {
-                        let new = TodoItem(id: UUID(), text: "", done: false, checkedOn: "")
-                        items.append(new); save(); focusedId = new.id
-                    } label: {
-                        HStack(alignment: .center, spacing: 6) {
-                            Image(systemName: "square")
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(AppTheme.textPrimary, .clear)
-                                .font(.title3)
-                            Text("Enter to-do…")
-                                .font(.callout.italic())
-                                .foregroundStyle(AppTheme.textSecondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 6)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(.horizontal, 8)
-                }
-
-                ForEach(Array(items.enumerated()), id: \.1.id) { idx, item in
-                    HStack(alignment: .center, spacing: 6) {
-                        Button {
-                            toggleDone(index: idx)
-                        } label: {
-                            Image(systemName: item.done ? "checkmark.square.fill" : "square")
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(item.done ? .white : AppTheme.textPrimary,
-                                                 item.done ? AppTheme.appGreen : .clear)
-                                .font(.title3)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(item.done ? "Mark not done" : "Mark done")
-
-                        TodoRowTextView(
-                            text: item.text,
-                            isFocused: focusedId == item.id,
-                            moveCaretToEnd: caretToEndId == item.id,
-                            onBeginEditing: { focusedId = item.id },
-                            onChange: { newText in
-                                items[idx].text = newText; save()
-                            },
-                            onSplitAtNewline: { before, after in
-                                items[idx].text = before
-                                let new = TodoItem(id: UUID(), text: after, done: false, checkedOn: "")
-                                items.insert(new, at: idx + 1)
-                                save()
-                                focusedId = new.id
-                            },
-                            onBackspaceAtStart: {
-                                guard idx > 0 else { return }
-                                let prevId = items[idx - 1].id
-                                if items.indices.contains(idx) {
-                                    items.remove(at: idx); save()
-                                }
-                                focusedId = prevId
-                                caretToEndId = prevId
-                            },
-                            onBlurEmpty: {
-                                if items.indices.contains(idx),
-                                   items[idx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                   !items[idx].done {
-                                    items.remove(at: idx); save()
-                                }
-                            }
-                        )
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                }
-            }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(AppTheme.surfaceUI)
-                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
-            )
-        }
-        .padding(.horizontal, 0)
-        .padding(.vertical, 4)
-        .onAppear {
-            items = load()
-            pruneCheckedFromPriorDays()
-            pruneEmptyRows()
-            save()
-        }
-    }
-
-    // Actions
-    private func toggleDone(index: Int) {
-        guard items.indices.contains(index) else { return }
-        items[index].done.toggle()
-        items[index].checkedOn = items[index].done ? todayString : ""
-        save()
-    }
-
-    private func pruneCheckedFromPriorDays() {
-        items.removeAll { $0.done && !$0.checkedOn.isEmpty && $0.checkedOn != todayString }
-    }
-
-    private func pruneEmptyRows() {
-        items.removeAll { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.done }
-    }
-
-    // Persistence
-    private func load() -> [TodoItem] {
-        let blob = UserDefaults.standard.string(forKey: persistKey) ?? ""
-        guard !blob.isEmpty else { return [] }
-        let parts = blob.split(separator: ITEM_SEP, omittingEmptySubsequences: true)
-        var out: [TodoItem] = []
-        for p in parts {
-            let s = String(p)
-            if let item = decodeOne(s) { out.append(item) }
-        }
-        return out
-    }
-
-    private func save() {
-        let payload = items
-            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.done }
-            .map { encodeOne($0) }
-            .joined(separator: String(ITEM_SEP))
-        UserDefaults.standard.set(payload, forKey: persistKey)
-    }
-
-    private func encodeOne(_ item: TodoItem) -> String {
-        let flag = item.done ? "1" : "0"
-        let safeText = item.text.replacingOccurrences(of: String(ITEM_SEP), with: " ")
-        return "\(CONTROL)\(flag)\(SEP)\(item.checkedOn)\(SEP)\(safeText)"
-    }
-
-    private func decodeOne(_ raw: String) -> TodoItem? {
-        guard !raw.isEmpty else { return nil }
-        var rest = raw
-        guard rest.first == CONTROL else {
-            return TodoItem(id: UUID(), text: raw, done: false, checkedOn: "")
-        }
-        rest.removeFirst()
-        guard let i1 = rest.firstIndex(of: SEP) else { return nil }
-        let flag = String(rest[..<i1]) == "1"
-        let r1 = rest[rest.index(after: i1)...]
-        guard let i2 = r1.firstIndex(of: SEP) else { return nil }
-        let checked = String(r1[..<i2])
-        let text = String(r1[r1.index(after: i2)...])
-        return TodoItem(id: UUID(), text: text, done: flag, checkedOn: checked)
-    }
-}
-
-// Row editor
-private struct TodoRowTextView: UIViewRepresentable {
-    let text: String
-    let isFocused: Bool
-    let moveCaretToEnd: Bool
-    var onBeginEditing: () -> Void
-    var onChange: (String) -> Void
-    var onSplitAtNewline: (_ before: String, _ after: String) -> Void
-    var onBackspaceAtStart: () -> Void
-    var onBlurEmpty: () -> Void
-
-    func makeUIView(context: Context) -> UITextView {
-        let tv = UITextView()
-        tv.backgroundColor = .clear
-        tv.textColor = UIColor.white
-        tv.tintColor = UIColor(AppTheme.appGreen)
-        tv.font = UIFont.preferredFont(forTextStyle: .body)
-        tv.isScrollEnabled = false
-        tv.keyboardDismissMode = .interactive
-        tv.textContainer.lineFragmentPadding = 0
-        tv.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0) // tighter row height
-        tv.contentInset = .zero
-        tv.textAlignment = .natural
-        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        tv.delegate = context.coordinator
-        tv.text = text
-        return tv
-    }
-
-    func updateUIView(_ uiView: UITextView, context: Context) {
-        if uiView.text != text { uiView.text = text }
-        if isFocused, !uiView.isFirstResponder {
-            uiView.becomeFirstResponder()
-            if moveCaretToEnd {
-                let ns = uiView.text as NSString
-                uiView.selectedRange = NSRange(location: ns.length, length: 0)
-            }
-        }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-
-    final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: TodoRowTextView
-        init(_ parent: TodoRowTextView) { self.parent = parent }
-
-        func textViewDidBeginEditing(_ textView: UITextView) { parent.onBeginEditing() }
-
-        func textView(_ textView: UITextView,
-                      shouldChangeTextIn range: NSRange,
-                      replacementText text: String) -> Bool {
-            if text == "\n" {
-                let ns = textView.text as NSString
-                let before = ns.substring(to: range.location)
-                let after  = ns.substring(from: range.location)
-                textView.text = before
-                parent.onChange(before)
-                DispatchQueue.main.async { self.parent.onSplitAtNewline(before, after) }
-                return false
-            }
-            if text.isEmpty && range.length == 1 && range.location == 0 {
-                if let sel = textView.selectedTextRange,
-                   textView.offset(from: textView.beginningOfDocument, to: sel.start) == 0,
-                   textView.offset(from: sel.start, to: sel.end) == 0 {
-                    parent.onBackspaceAtStart()
-                    return false
-                }
-            }
-            return true
-        }
-
-        func textViewDidChange(_ textView: UITextView) { parent.onChange(textView.text ?? "") }
-
-        func textViewDidEndEditing(_ textView: UITextView) {
-            let txt = (textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if txt.isEmpty { parent.onBlurEmpty() }
-        }
-    }
 }
