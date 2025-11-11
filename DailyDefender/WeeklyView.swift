@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - WeeklyView (Daily-style input; bullets only on start & Return)
+// MARK: - WeeklyView (Daily-style input; bullets removed)
 struct WeeklyView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
@@ -577,17 +577,9 @@ struct WeeklyView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
-    // MARK: Share
+    // MARK: Share (no filler lines)
     private func shareWeeklySummary() {
-        func bulletedForShare(_ s: String) -> String {
-            // For share only: ensure each non-empty line starts with •
-            let lines = s.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-            return lines.map { line in
-                let t = line.trimmingCharacters(in: .whitespaces)
-                if t.isEmpty { return "—" }
-                return t.hasPrefix("• ") ? t : "• " + t
-            }.joined(separator: "\n")
-        }
+        func keepUserLines(_ s: String) -> String { s }
 
         let text = """
         **Weekly Check-In (\(weekKey))**
@@ -598,28 +590,28 @@ struct WeeklyView: View {
         💼 Production: \(prodCount)/\(perPillarCap)
 
         **⚖️ Wins / Losses:**
-        \(bulletedForShare(winsLosses))
+        \(keepUserLines(winsLosses))
 
         **🏋 Physiology Notes:**
-        \(bulletedForShare(phys))
+        \(keepUserLines(phys))
 
         **🙏 Piety Notes:**
-        \(bulletedForShare(prayer))
+        \(keepUserLines(prayer))
 
         **👥 People Notes:**
-        \(bulletedForShare(people))
+        \(keepUserLines(people))
 
         **💼 Production Notes:**
-        \(bulletedForShare(production))
+        \(keepUserLines(production))
 
         **🎯 This Week’s One Thing: \(carryDone ? "DONE!" : "NOT DONE")**
-        \(bulletedForShare(carryText))
+        \(keepUserLines(carryText))
 
         **🎯 One Thing Next Week:**
-        \(bulletedForShare(oneThingNextWeek))
+        \(keepUserLines(oneThingNextWeek))
 
         **📓 Extra Notes:**
-        \(bulletedForShare(journalNotes))
+        \(keepUserLines(journalNotes))
         """
         let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         UIApplication.shared.firstKeyWindow?.rootViewController?.present(av, animated: true)
@@ -657,8 +649,8 @@ private struct OneLineHeaderRow<Trailing: View>: View {
     }
 }
 
-// MARK: - BulletNotesCard (auto-grow + wrap)
-private struct BulletNotesCard: View {
+// MARK: - Notes card (auto-grow + wrap)
+private struct BulletNotesCard: View { // name kept to avoid other ref changes
     @Binding var text: String
     let placeholder: String
     var onFocusChange: ((Bool) -> Void)? = nil
@@ -692,7 +684,7 @@ private struct BulletNotesCard: View {
     }
 }
 
-// MARK: - BulletTextViewSimple (measures sizeThatFits for word-wrap + focus callback)
+// MARK: - UITextView wrapper — paragraph spacing on Return, bullets removed
 private struct BulletTextViewSimple: UIViewRepresentable {
     @Binding var text: String
     var placeholder: String
@@ -704,8 +696,8 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         tv.backgroundColor = .clear
         tv.textColor = UIColor.white
         tv.tintColor = UIColor(AppTheme.appGreen)
-        tv.font = UIFont.preferredFont(forTextStyle: .body)   // match Daily
-        tv.isScrollEnabled = false                            // let it grow
+        tv.font = UIFont.preferredFont(forTextStyle: .body)
+        tv.isScrollEnabled = false
         tv.keyboardDismissMode = .interactive
         tv.textContainer.lineFragmentPadding = 0
         tv.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
@@ -738,7 +730,6 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         tv.text = text
         label.isHidden = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        // initial measurement
         DispatchQueue.main.async { self.remeasure(tv) }
         return tv
     }
@@ -761,11 +752,7 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         init(_ parent: BulletTextViewSimple) { self.parent = parent }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
-            if (textView.text ?? "").isEmpty {
-                textView.text = "• "
-                moveCaretToEnd(textView)
-                parent.text = textView.text
-            }
+            // Focus only
             placeholderLabel?.isHidden = true
             parent.onFocusChange?(true)
             parent.remeasure(textView)
@@ -781,11 +768,12 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         func textView(_ textView: UITextView,
                       shouldChangeTextIn range: NSRange,
                       replacementText repl: String) -> Bool {
+            // Paragraph spacing: convert single Return into blank-line Return
             if repl == "\n" {
                 let ns = textView.text as NSString? ?? ""
-                let replaced = ns.replacingCharacters(in: range, with: "\n• ")
+                let replaced = ns.replacingCharacters(in: range, with: "\n\n")
                 textView.text = replaced
-                textView.selectedRange = NSRange(location: range.location + 3, length: 0)
+                textView.selectedRange = NSRange(location: range.location + 2, length: 0)
                 parent.text = replaced
                 placeholderLabel?.isHidden = true
                 parent.remeasure(textView)
@@ -799,11 +787,6 @@ private struct BulletTextViewSimple: UIViewRepresentable {
             let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
             placeholderLabel?.isHidden = !trimmed.isEmpty
             parent.remeasure(textView)
-        }
-
-        private func moveCaretToEnd(_ tv: UITextView) {
-            let len = (tv.text as NSString).length
-            tv.selectedRange = NSRange(location: len, length: 0)
         }
     }
 
