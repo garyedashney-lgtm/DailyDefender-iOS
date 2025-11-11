@@ -22,6 +22,9 @@ struct DailyView: View {
     @State private var keyboardVisible = false
     @State private var keyboardHeight: CGFloat = 0
 
+    // Editor focus state (for auto headroom + scroll like Weekly)
+    @State private var anyEditorFocused = false
+
     // yyyy-MM-dd
     private var todayString: String {
         let f = DateFormatter()
@@ -68,45 +71,46 @@ struct DailyView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                AppTheme.navy900.ignoresSafeArea()
+            ScrollViewReader { proxy in
+                ZStack {
+                    AppTheme.navy900.ignoresSafeArea()
 
-                List {
-                    // Progress
-                    Section {
-                        VStack(spacing: 8) {
-                            ProgressView(value: progress)
-                                .tint(AppTheme.appGreen)
-                            Text("\(completedCount) / \(totalPossible) completed today")
-                                .frame(maxWidth: .infinity)
-                                .multilineTextAlignment(.center)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(AppTheme.textPrimary)
+                    List {
+                        // Progress
+                        Section {
+                            VStack(spacing: 8) {
+                                ProgressView(value: progress)
+                                    .tint(AppTheme.appGreen)
+                                Text("\(completedCount) / \(totalPossible) completed today")
+                                    .frame(maxWidth: .infinity)
+                                    .multilineTextAlignment(.center)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(AppTheme.textPrimary)
+                            }
+                            .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
                         }
-                        .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
-                    }
-                    .listRowBackground(AppTheme.surface)
+                        .listRowBackground(AppTheme.surface)
 
-                    // Pillars
-                    ForEach(Pillar.allCases, id: \.self) { pillar in
-                        pillarBlock(pillar)
-                    }
+                        // Pillars
+                        ForEach(Pillar.allCases, id: \.self) { pillar in
+                            pillarBlock(pillar, proxy: proxy)
+                        }
 
-                    // To-Do
-                    todoBlock(extraBottom: keyboardExtraPadding())
+                        // To-Do
+                        todoBlock(extraBottom: keyboardExtraPadding())
+                    }
+                    .listStyle(.plain)
+                    .scrollDismissesKeyboard(.interactively)
+                    .scrollContentBackground(.hidden)
+                    // REMOVED: .padding(.bottom, 48)
+                    .modifier(CompactListTweaks())
+                    .withKeyboardDismiss()
                 }
-                .listStyle(.plain)
-                .scrollDismissesKeyboard(.interactively)
-                .scrollContentBackground(.hidden)
-                .padding(.bottom, 48)                 // Footer space
-                .modifier(CompactListTweaks())
-                .withKeyboardDismiss()
-
-                // Confetti (UNCHANGED)
-                if showConfetti {
-                    ConfettiView()
-                        .ignoresSafeArea()
-                        .transition(.opacity)
+                // Like Weekly: small fixed headroom when editing/keyboard is up
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear
+                        .frame(height: (keyboardVisible || anyEditorFocused) ? 96 : 48)
+                        .allowsHitTesting(false)
                 }
             }
 
@@ -234,6 +238,7 @@ struct DailyView: View {
 
     // Extra List spacer only when keyboard is up (keeps bottom card off the keyboard)
     private func keyboardExtraPadding() -> CGFloat {
+        // No longer used for inset height; kept if you need it later
         guard keyboardVisible else { return 0 }
         let cushion: CGFloat = 28
         return min(max(keyboardHeight + cushion, 140), 280)
@@ -249,11 +254,21 @@ struct DailyView: View {
         return overlap
     }
 
+    // Smooth scroll helper (like Weekly)
+    private func scrollTo(_ id: String, proxy: ScrollViewProxy) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                proxy.scrollTo(id, anchor: .bottom)
+            }
+        }
+    }
+
     // MARK: - Pillar block
     @ViewBuilder
-    private func pillarBlock(_ pillar: Pillar) -> some View {
+    private func pillarBlock(_ pillar: Pillar, proxy: ScrollViewProxy) -> some View {
         let pid = pillarId(pillar)
         let checked = store.completed.contains(pid)
+        let anchorId = "pillar-\(pid)"
 
         Section {
             HStack(spacing: 8) {
@@ -274,16 +289,21 @@ struct DailyView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            // MORE space between subtitle and focus card
+            // Notes card — auto-grow, wraps, paragraph spacing and focus headroom
             PlainNotesCard(
                 text: persistedFocus(for: pid),
                 placeholder: "Focused activity?",
-                onChange: { setPersistedFocus($0, for: pid) }
+                onChange: { setPersistedFocus($0, for: pid) },
+                onFocusChange: { focused in
+                    anyEditorFocused = focused
+                    if focused { scrollTo(anchorId, proxy: proxy) }
+                }
             )
-            .padding(.top, 8) // ↑ requested extra space
+            .padding(.top, 8)
             .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
+            .id(anchorId)
         }
     }
 
@@ -308,16 +328,9 @@ struct DailyView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            // MORE space between subtitle and the checklist card
+            // Checklist card
             TodoListCard(persistKey: TODO_PERSIST_KEY, todayString: todayString)
-                .padding(.top, 8) // ↑ requested extra space
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(AppTheme.navy900)
-
-            // Invisible spacer to keep the card comfortably above the keyboard
-            Color.clear
-                .frame(height: extraBottom)
+                .padding(.top, 8)
                 .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
@@ -359,25 +372,30 @@ private struct CheckSquare: View {
                     checked ? .white : AppTheme.textPrimary,
                     checked ? AppTheme.appGreen : .clear
                 )
-                .font(.system(size: 26, weight: .medium))   // ↑ bigger icon than title3
-                .frame(width: 44, height: 44, alignment: .center) // ↑ Apple 44x44 tappable area
+                .font(.system(size: 26, weight: .medium))
+                .frame(width: 44, height: 44, alignment: .center)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 }
 
-// PlainNotesCard (unchanged)
+// PlainNotesCard updated to match Weekly's behavior (auto-grow, wrap, paragraph spacing, focus headroom)
 private struct PlainNotesCard: View {
     @State private var textInternal: String
-    @FocusState private var isFocused: Bool
+    @State private var measuredHeight: CGFloat = 46
     let placeholder: String
     let onChange: (String) -> Void
+    var onFocusChange: ((Bool) -> Void)? = nil
 
-    init(text: String, placeholder: String, onChange: @escaping (String) -> Void) {
+    init(text: String,
+         placeholder: String,
+         onChange: @escaping (String) -> Void,
+         onFocusChange: ((Bool) -> Void)? = nil) {
         _textInternal = State(initialValue: text)
         self.placeholder = placeholder
         self.onChange = onChange
+        self.onFocusChange = onFocusChange
     }
 
     var body: some View {
@@ -385,6 +403,7 @@ private struct PlainNotesCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AppTheme.surfaceUI)
 
+            // Lightweight placeholder overlay
             if textInternal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(placeholder)
                     .font(.callout.italic())
@@ -394,24 +413,28 @@ private struct PlainNotesCard: View {
                     .allowsHitTesting(false)
             }
 
-            CenteredTextView(
+            AutoGrowTextView(
                 text: $textInternal,
-                onChanged: { onChange($0) },
-                targetSingleLineHeight: 46
+                onHeightChange: { h in
+                    let clamped = max(46, ceil(h))
+                    if abs(clamped - measuredHeight) > 0.5 { measuredHeight = clamped }
+                },
+                onFocusChange: onFocusChange
             )
-            .frame(minHeight: 46)
+            .frame(height: measuredHeight)
             .background(Color.clear)
+            .onChange(of: textInternal) { onChange($0) }
         }
         .padding(.horizontal, 0)
         .padding(.bottom, 4)
     }
 }
 
-// TextView used in PlainNotesCard
-private struct CenteredTextView: UIViewRepresentable {
+// Auto-growing UITextView with wrapping + paragraph spacing (no bullets)
+private struct AutoGrowTextView: UIViewRepresentable {
     @Binding var text: String
-    var onChanged: (String) -> Void
-    var targetSingleLineHeight: CGFloat = 46
+    var onHeightChange: (CGFloat) -> Void
+    var onFocusChange: ((Bool) -> Void)?
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
@@ -422,46 +445,84 @@ private struct CenteredTextView: UIViewRepresentable {
         tv.isScrollEnabled = false
         tv.keyboardDismissMode = .interactive
         tv.textContainer.lineFragmentPadding = 0
-        tv.contentInset = .zero
+        tv.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        tv.textContainer.widthTracksTextView = true
+        tv.textContainer.lineBreakMode = .byWordWrapping
+        tv.autocorrectionType = .yes
+        tv.autocapitalizationType = .sentences
+        tv.smartDashesType = .no
+        tv.smartQuotesType = .no
+        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
         tv.delegate = context.coordinator
 
-        applyCenteredInsets(to: tv)
+        // Paragraph spacing to mimic "Return = paragraph space"
+        let ps = NSMutableParagraphStyle()
+        ps.lineBreakMode = .byWordWrapping
+        ps.paragraphSpacing = 6
+        ps.lineSpacing = 2
+        context.coordinator.typingParagraphStyle = ps
+        tv.typingAttributes = [
+            .paragraphStyle: ps,
+            .foregroundColor: UIColor.white,
+            .font: tv.font as Any
+        ]
+
         tv.text = text
+        DispatchQueue.main.async { self.remeasure(tv) }
         return tv
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
         if uiView.text != text { uiView.text = text }
-        applyCenteredInsets(to: uiView)
-    }
+        // Keep paragraph style applied even if attributes reset
+        var attrs = uiView.typingAttributes
+        attrs[.paragraphStyle] = context.coordinator.typingParagraphStyle
+        attrs[.foregroundColor] = UIColor.white
+        attrs[.font] = uiView.font as Any
+        uiView.typingAttributes = attrs
 
-    private func applyCenteredInsets(to tv: UITextView) {
-        let font = tv.font ?? UIFont.preferredFont(forTextStyle: .body)
-        let asc  = font.ascender
-        let desc = abs(font.descender)
-        let lead = font.leading
-        let line = asc + desc + lead
-
-        let H: CGFloat = targetSingleLineHeight
-        let base = max(0, (H - line) / 2)
-
-        let top = base.rounded(.toNearestOrEven)
-        let bottom = (base + 2.0).rounded(.toNearestOrEven)
-
-        tv.textContainerInset = UIEdgeInsets(top: top, left: 12, bottom: bottom, right: 12)
+        DispatchQueue.main.async { self.remeasure(uiView) }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: CenteredTextView
-        init(_ parent: CenteredTextView) { self.parent = parent }
+        var parent: AutoGrowTextView
+        var typingParagraphStyle: NSParagraphStyle?
+        init(_ parent: AutoGrowTextView) { self.parent = parent }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            parent.onFocusChange?(true)
+            parent.remeasure(textView)
+        }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            parent.onFocusChange?(false)
+            parent.remeasure(textView)
+        }
 
         func textViewDidChange(_ textView: UITextView) {
+            // Ensure the paragraph style persists for newly typed text
+            if let ps = typingParagraphStyle {
+                var attrs = textView.typingAttributes
+                attrs[.paragraphStyle] = ps
+                attrs[.foregroundColor] = UIColor.white
+                attrs[.font] = textView.font as Any
+                textView.typingAttributes = attrs
+            }
             parent.text = textView.text ?? ""
-            parent.onChanged(parent.text)
+            parent.remeasure(textView)
         }
-        func textViewShouldEndEditing(_ textView: UITextView) -> Bool { true }
+    }
+
+    fileprivate func remeasure(_ tv: UITextView) {
+        var targetWidth = tv.bounds.width
+        if targetWidth <= 0 {
+            targetWidth = UIScreen.main.bounds.width - 32
+        }
+        let size = tv.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+        onHeightChange(size.height)
     }
 }
 
@@ -581,8 +642,7 @@ private struct TodoListCard: View {
                 }
 
                 ForEach(Array(items.enumerated()), id: \.1.id) { idx, item in
-                    HStack(alignment: .center, spacing: 6) { // tighter between checkbox and text
-                        // Monthly-style checkbox
+                    HStack(alignment: .center, spacing: 6) {
                         Button {
                             toggleDone(index: idx)
                         } label: {
@@ -629,11 +689,10 @@ private struct TodoListCard: View {
                         )
                     }
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)  // tighter line spacing
+                    .padding(.vertical, 4)
                 }
             }
-            // Card padding: tighter top/bottom, normal sides
-            .padding(.vertical, 6)     // ↓ tighter distance to first/last checkbox
+            .padding(.vertical, 6)
             .padding(.horizontal, 12)
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
