@@ -1,11 +1,12 @@
 import SwiftUI
 import UIKit
 
+// MARK: - WeeklyView (Daily-style input; bullets only on start & Return)
 struct WeeklyView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
 
-    // MARK: - Week Key (ISO week, Monday-start)
+    // MARK: Week key (ISO Monday-start)
     private var weekKey: String { Self.isoWeekKey(for: Date()) }
     private static func isoWeekKey(for date: Date) -> String {
         var cal = Calendar(identifier: .iso8601)
@@ -15,7 +16,7 @@ struct WeeklyView: View {
         return String(format: "%04d-W%02d", y, w)
     }
 
-    // MARK: - Weekly Totals (display only; wire to store as needed)
+    // MARK: Weekly Totals (display only)
     private let weeklyTotalCap = 28
     private let perPillarCap = 7
 
@@ -45,10 +46,8 @@ struct WeeklyView: View {
     private var pietyCount: Int  { min(pillarSaved.piety  + (store.completed.contains(pid(.Piety)) ? 1 : 0), perPillarCap) }
     private var peopleCount: Int { min(pillarSaved.people + (store.completed.contains(pid(.People)) ? 1 : 0), perPillarCap) }
     private var prodCount: Int   { min(pillarSaved.prod   + (store.completed.contains(pid(.Production)) ? 1 : 0), perPillarCap) }
-    
-    @State private var goProfileEdit = false
 
-    // MARK: - Weekly Text State (persisted per week)
+    // MARK: Weekly text (persisted per week)
     @State private var winsLosses: String = ""
     @State private var phys: String = ""
     @State private var prayer: String = ""
@@ -59,154 +58,200 @@ struct WeeklyView: View {
     @State private var oneThingNextWeek: String = ""
     @State private var journalNotes: String = ""
 
-    // MARK: - UI State
+    // UI
     @State private var showShield = false
-    @State private var showProfileEdit = false
+    @State private var goProfileEdit = false
+    @State private var showClearAlert = false
+    @State private var didHydrateOnce = false
+
+    // Debounced save
+    @State private var saveWork: DispatchWorkItem?
+    private func scheduleSave() {
+        saveWork?.cancel()
+        let w = DispatchWorkItem { self.flushAll() }
+        saveWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: w)
+    }
 
     var body: some View {
         if !session.isPro {
-            // Free users see the Paywall card on Weekly
             PaywallCardView(title: "Pro Feature")
         } else {
             NavigationStack {
                 ZStack {
                     AppTheme.navy900.ignoresSafeArea()
-                    
-                    List {
-                        // === Progress strip (matches Daily placement/style) ===
-                        Section {
-                            VStack(spacing: 8) {
-                                ProgressView(value: weeklyProgress)
-                                    .tint(AppTheme.appGreen)
-                                Text("\(displayCoreTotal) / \(weeklyTotalCap) completed this week")
-                                    .frame(maxWidth: .infinity)
-                                    .multilineTextAlignment(.center)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(AppTheme.textPrimary)
-                            }
-                            .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
-                        }
-                        .listRowBackground(AppTheme.surface)
-                        
-                        // === Wins / Losses ===
-                        weeklySection(
-                            title: "Wins / Losses",
-                            countText: nil,
-                            subtitle: "",
-                            text: $winsLosses
-                        )
-                        
-                        // === Physiology ===
-                        weeklySection(
-                            title: "Physiology",
-                            countText: "\(physCount)/\(perPillarCap)",
-                            subtitle: "   The body is the universal address of your existence",
-                            text: $phys
-                        )
-                        
-                        // === Piety ===
-                        weeklySection(
-                            title: "Piety",
-                            countText: "\(pietyCount)/\(perPillarCap)",
-                            subtitle: "   Using mystery & awe as the spirit speaks for the soul",
-                            text: $prayer
-                        )
-                        
-                        // === People ===
-                        weeklySection(
-                            title: "People",
-                            countText: "\(peopleCount)/\(perPillarCap)",
-                            subtitle: "   Team Human: herd animals who exist in each other",
-                            text: $people
-                        )
-                        
-                        // === Production ===
-                        weeklySection(
-                            title: "Production",
-                            countText: "\(prodCount)/\(perPillarCap)",
-                            subtitle: "   A man produces more than he consumes",
-                            text: $production
-                        )
-                        
-                        // === 🎯 This Week's One Thing Done? (checkbox on right) ===
-                        weeklyCarryoverSection(
-                            leadingEmoji: "🎯",
-                            title: "This Week’s One Thing Done?",
-                            text: $carryText,
-                            isDone: $carryDone
-                        )
-                        
-                        // === 🎯 One Thing for Next Week ===
-                        weeklySimpleSection(
-                            leadingEmoji: "🎯",
-                            title: "One Thing for Next Week",
-                            subtitle: "",
-                            text: $oneThingNextWeek
-                        )
-                        
-                        // === 📓 Extra Notes ===
-                        weeklySimpleSection(
-                            leadingEmoji: "📓",
-                            title: "Extra Notes",
-                            subtitle: "",
-                            text: $journalNotes
-                        )
-                        
-                        // === Share (outlined; not full width; bottom room) ===
-                        Section {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Spacer().frame(height: 6)
-                                Button(action: shareWeeklySummary) {
-                                    Text("Share")
+
+                    // ScrollViewReader added for auto-scroll when an editor gains focus
+                    ScrollViewReader { proxy in
+                        List {
+                            // === Progress strip ===
+                            Section {
+                                VStack(spacing: 8) {
+                                    ProgressView(value: weeklyProgress)
+                                        .tint(AppTheme.appGreen)
+                                    Text("\(displayCoreTotal) / \(weeklyTotalCap) completed this week")
+                                        .frame(maxWidth: .infinity)
+                                        .multilineTextAlignment(.center)
+                                        .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(AppTheme.textPrimary)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
                                 }
-                                .buttonStyle(.plain)
-                                .background(AppTheme.navy900)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
-                                )
-                                .padding(.horizontal, 12)
-                                Spacer().frame(height: 2)
+                                .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
                             }
-                        }
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(AppTheme.navy900)
-                        
-                        // Bottom spacer so Share is fully tappable
-                        Section { Color.clear.frame(height: 56) }
+                            .listRowBackground(AppTheme.surface)
+
+                            // === Wins / Losses ===
+                            weeklySection(
+                                title: "Wins / Losses",
+                                countText: nil,
+                                subtitle: "",
+                                text: $winsLosses,
+                                placeholder: "type your notes here…",
+                                editorId: "wins",
+                                proxy: proxy
+                            )
+
+                            // === Physiology ===
+                            weeklySection(
+                                title: "Physiology",
+                                countText: "\(physCount)/\(perPillarCap)",
+                                subtitle: "   The body is the universal address of your existence",
+                                text: $phys,
+                                placeholder: "type your notes here…",
+                                editorId: "phys",
+                                proxy: proxy
+                            )
+
+                            // === Piety ===
+                            weeklySection(
+                                title: "Piety",
+                                countText: "\(pietyCount)/\(perPillarCap)",
+                                subtitle: "   Using mystery & awe as the spirit speaks for the soul",
+                                text: $prayer,
+                                placeholder: "type your notes here…",
+                                editorId: "piety",
+                                proxy: proxy
+                            )
+
+                            // === People ===
+                            weeklySection(
+                                title: "People",
+                                countText: "\(peopleCount)/\(perPillarCap)",
+                                subtitle: "   Team Human: herd animals who exist in each other",
+                                text: $people,
+                                placeholder: "type your notes here…",
+                                editorId: "people",
+                                proxy: proxy
+                            )
+
+                            // === Production ===
+                            weeklySection(
+                                title: "Production",
+                                countText: "\(prodCount)/\(perPillarCap)",
+                                subtitle: "   A man produces more than he consumes",
+                                text: $production,
+                                placeholder: "type your notes here…",
+                                editorId: "prod",
+                                proxy: proxy
+                            )
+
+                            // === 🎯 Carryover Done? ===
+                            weeklyCarryoverSection(
+                                leadingEmoji: "🎯",
+                                title: "This Week’s One Thing Done?",
+                                text: $carryText,
+                                isDone: $carryDone,
+                                placeholder: "— none set last week —",
+                                editorId: "carry",
+                                proxy: proxy
+                            )
+
+                            // === 🎯 One Thing Next Week ===
+                            weeklySimpleSection(
+                                leadingEmoji: "🎯",
+                                title: "One Thing for Next Week",
+                                subtitle: "",
+                                text: $oneThingNextWeek,
+                                placeholder: "type your notes here…",
+                                editorId: "oneNext",
+                                proxy: proxy
+                            )
+
+                            // === 📓 Extra Notes ===
+                            weeklySimpleSection(
+                                leadingEmoji: "📓",
+                                title: "Extra Notes",
+                                subtitle: "",
+                                text: $journalNotes,
+                                placeholder: "type your extra notes here…",
+                                editorId: "notes",
+                                proxy: proxy
+                            )
+
+                            // === Clear / Share row ===
+                            Section {
+                                HStack(spacing: 12) {
+                                    Button(action: { showClearAlert = true }) {
+                                        Text("Clear All")
+                                            .foregroundStyle(AppTheme.textPrimary)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .background(AppTheme.navy900)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
+                                    )
+
+                                    Spacer(minLength: 12)
+
+                                    Button(action: shareWeeklySummary) {
+                                        Text("Share")
+                                            .foregroundStyle(AppTheme.textPrimary)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .background(AppTheme.navy900)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
+                                    )
+                                }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                            }
                             .listRowSeparator(.hidden)
                             .listRowBackground(AppTheme.navy900)
+
+                            Section { Color.clear.frame(height: 56) }
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(AppTheme.navy900)
+                        }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .scrollDismissesKeyboard(.interactively)
+                        .modifier(CompactListTweaks())
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .scrollDismissesKeyboard(.interactively)
-                    .modifier(CompactListTweaks())
                 }
-                // Tap outside to dismiss keyboard (matches Daily)
                 .withKeyboardDismiss()
-                
-                // === Toolbar (standardized like Daily) ===
+
+                // Toolbar
                 .toolbar {
-                    // Left: Shield icon → FULL SCREEN cover
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button(action: { showShield = true }) {
                             Image("four_ps")
-                                .resizable()
-                                .scaledToFit()
+                                .resizable().scaledToFit()
                                 .frame(width: 36, height: 36)
                                 .clipShape(Circle())
                                 .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
                                 .padding(4)
-                                .offset(y: -2) // optical center
+                                .offset(y: -2)
                         }
                         .accessibilityLabel("Open 4 Ps Shield")
                     }
-                    
-                    // Center: title + week key
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 2) {
                             HStack(spacing: 8) {
@@ -221,8 +266,6 @@ struct WeeklyView: View {
                                 .padding(.bottom, 6)
                         }
                     }
-                    
-                    // Right: avatar (32pt) → ProfileEditView
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Group {
                             if let path = store.profile.photoPath,
@@ -236,9 +279,9 @@ struct WeeklyView: View {
                                     .foregroundStyle(.white, AppTheme.appGreen)
                             }
                         }
-                        .frame(width: 32, height: 32)                    // standardized size
-                        .clipShape(RoundedRectangle(cornerRadius: 8))    // standardized radius
-                        .offset(y: -2)                                    // optical center
+                        .frame(width: 32, height: 32)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .offset(y: -2)
                         .onTapGesture { goProfileEdit = true }
                         .accessibilityLabel("Profile")
                     }
@@ -247,19 +290,38 @@ struct WeeklyView: View {
                 .toolbarBackground(AppTheme.navy900, for: .navigationBar)
                 .toolbarColorScheme(.dark, for: .navigationBar)
                 .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
-                
-                // Shield page (has its own Back)
-                .fullScreenCover(isPresented: $showShield) {
-                    ShieldPage(imageName: "four_ps")
+
+                // Shield
+                .fullScreenCover(isPresented: $showShield) { ShieldPage(imageName: "four_ps") }
+
+                // Hydrate + save
+                .task {
+                    if !didHydrateOnce {
+                        hydrateFromStorage()
+                        didHydrateOnce = true
+                    }
                 }
-                // Profile edit sheet
-                .sheet(isPresented: $showProfileEdit) {
-                    ProfileEditView().environmentObject(store)
-                }
-                .task { hydrateFromStorage() }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                     flushAll()
                 }
+                .alert("Clear all weekly notes?", isPresented: $showClearAlert) {
+                    Button("Clear All", role: .destructive) { clearAll() }
+                    Button("Cancel", role: .cancel) { }
+                } message: {
+                    Text("This will remove all text in Weekly for week \(weekKey).")
+                }
+
+                // Debounced persistence on change
+                .onChange(of: winsLosses)       { _ in scheduleSave() }
+                .onChange(of: phys)             { _ in scheduleSave() }
+                .onChange(of: prayer)           { _ in scheduleSave() }
+                .onChange(of: people)           { _ in scheduleSave() }
+                .onChange(of: production)       { _ in scheduleSave() }
+                .onChange(of: carryText)        { _ in scheduleSave() }
+                .onChange(of: carryDone)        { _ in scheduleSave() }
+                .onChange(of: oneThingNextWeek) { _ in scheduleSave() }
+                .onChange(of: journalNotes)     { _ in scheduleSave() }
+
                 NavigationLink("", isActive: $goProfileEdit) {
                     ProfileEditView()
                         .environmentObject(store)
@@ -269,19 +331,20 @@ struct WeeklyView: View {
         }
     }
 
-    // MARK: - Section using your SectionHeader (Pillar sections)
+    // MARK: Sections
     @ViewBuilder
     private func weeklySection(
         title: String,
-        countText: String?, // e.g., "3/7" or nil
+        countText: String?,
         subtitle: String,
-        text: Binding<String>
+        text: Binding<String>,
+        placeholder: String,
+        editorId: String,
+        proxy: ScrollViewProxy
     ) -> some View {
         Section {
             HStack(spacing: 8) {
                 SectionHeader(label: title, pillar: pillarForTitle(title), countText: nil)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -306,23 +369,30 @@ struct WeeklyView: View {
                     .listRowBackground(AppTheme.navy900)
             }
 
-            BulletPlainNotesCard(text: text)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(AppTheme.navy900)
+            BulletNotesCard(
+                text: text,
+                placeholder: placeholder,
+                onBeginEditing: { withAnimation { proxy.scrollTo(editorId, anchor: .top) } }
+            )
+            .id(editorId)
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 6, trailing: 0))
+            .listRowSeparator(.hidden)
+            .listRowBackground(AppTheme.navy900)
         }
     }
 
-    // MARK: - Simple header row (no pillar icon) with optional leading emoji; divider shrinks first
     @ViewBuilder
     private func weeklySimpleSection(
         leadingEmoji: String? = nil,
         title: String,
         subtitle: String,
-        text: Binding<String>
+        text: Binding<String>,
+        placeholder: String,
+        editorId: String,
+        proxy: ScrollViewProxy
     ) -> some View {
         Section {
-            OneLineHeaderRow(leadingEmoji: leadingEmoji, title: title)   // same font size, no wrap
+            OneLineHeaderRow(leadingEmoji: leadingEmoji, title: title)
                 .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
@@ -337,36 +407,36 @@ struct WeeklyView: View {
                     .listRowBackground(AppTheme.navy900)
             }
 
-            BulletPlainNotesCard(text: text)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(AppTheme.navy900)
+            BulletNotesCard(
+                text: text,
+                placeholder: placeholder,
+                onBeginEditing: { withAnimation { proxy.scrollTo(editorId, anchor: .top) } }
+            )
+            .id(editorId)
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 6, trailing: 0))
+            .listRowSeparator(.hidden)
+            .listRowBackground(AppTheme.navy900)
         }
     }
 
-    // MARK: - Carryover Section with checkbox on far right (slightly inset)
     @ViewBuilder
     private func weeklyCarryoverSection(
         leadingEmoji: String? = nil,
         title: String,
         text: Binding<String>,
-        isDone: Binding<Bool>
+        isDone: Binding<Bool>,
+        placeholder: String,
+        editorId: String,
+        proxy: ScrollViewProxy
     ) -> some View {
         Section {
             HStack(spacing: 8) {
-                if let emoji = leadingEmoji {
-                    Text(emoji)
-                        .font(.title3)
-                }
-
+                if let emoji = leadingEmoji { Text(emoji).font(.title3) }
                 Text(title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(AppTheme.textPrimary)
                     .lineLimit(1)
-                    .layoutPriority(2)
-
                 Spacer()
-
                 let canMark = !text.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 CheckSquare(
                     checked: isDone.wrappedValue && canMark,
@@ -374,20 +444,26 @@ struct WeeklyView: View {
                         if canMark {
                             isDone.wrappedValue.toggle()
                             saveCarryoverDone(isDone.wrappedValue)
+                            scheduleSave()
                         }
                     }
                 )
-                .opacity(canMark ? 1.0 : 0.5)
-                .padding(.trailing, 8) // ✅ still near edge, but pulled in a tad
+                .opacity(canMark ? 1 : 0.5)
+                .padding(.trailing, 8)
             }
             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
-            BulletPlainNotesCard(text: text)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(AppTheme.navy900)
+            BulletNotesCard(
+                text: text,
+                placeholder: placeholder,
+                onBeginEditing: { withAnimation { proxy.scrollTo(editorId, anchor: .top) } }
+            )
+            .id(editorId)
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 6, trailing: 0))
+            .listRowSeparator(.hidden)
+            .listRowBackground(AppTheme.navy900)
         }
     }
 
@@ -401,7 +477,7 @@ struct WeeklyView: View {
         }
     }
 
-    // MARK: - Persistence (scoped by weekKey)
+    // MARK: Persistence (scoped by week)
     private func key(_ base: String) -> String { "\(base)_\(weekKey)" }
 
     private func hydrateFromStorage() {
@@ -446,8 +522,31 @@ struct WeeklyView: View {
         UserDefaults.standard.set(v, forKey: key("weekly_carryDone"))
     }
 
-    // MARK: - Share
+    private func clearAll() {
+        winsLosses = ""
+        phys = ""
+        prayer = ""
+        people = ""
+        production = ""
+        carryText = ""
+        carryDone = false
+        oneThingNextWeek = ""
+        journalNotes = ""
+        flushAll()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    // MARK: Share
     private func shareWeeklySummary() {
+        func bulletedForShare(_ s: String) -> String {
+            let lines = s.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            return lines.map { line in
+                let t = line.trimmingCharacters(in: .whitespaces)
+                if t.isEmpty { return "—" }
+                return t.hasPrefix("• ") ? t : "• " + t
+            }.joined(separator: "\n")
+        }
+
         let text = """
         **Weekly Check-In (\(weekKey))**
         Core Points: \(displayCoreTotal)/\(weeklyTotalCap)
@@ -457,35 +556,35 @@ struct WeeklyView: View {
         💼 Production: \(prodCount)/\(perPillarCap)
 
         **⚖️ Wins / Losses:**
-        \(winsLosses.isBlank ? "—" : winsLosses)
+        \(bulletedForShare(winsLosses))
 
         **🏋 Physiology Notes:**
-        \(phys.isBlank ? "—" : phys)
+        \(bulletedForShare(phys))
 
         **🙏 Piety Notes:**
-        \(prayer.isBlank ? "—" : prayer)
+        \(bulletedForShare(prayer))
 
         **👥 People Notes:**
-        \(people.isBlank ? "—" : people)
+        \(bulletedForShare(people))
 
         **💼 Production Notes:**
-        \(production.isBlank ? "—" : production)
+        \(bulletedForShare(production))
 
         **🎯 This Week’s One Thing: \(carryDone ? "DONE!" : "NOT DONE")**
-        \(carryText.isBlank ? "— none set last week —" : carryText)
+        \(bulletedForShare(carryText))
 
         **🎯 One Thing Next Week:**
-        \(oneThingNextWeek.isBlank ? "—" : oneThingNextWeek)
+        \(bulletedForShare(oneThingNextWeek))
 
         **📓 Extra Notes:**
-        \(journalNotes.isBlank ? "—" : journalNotes)
+        \(bulletedForShare(journalNotes))
         """
         let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         UIApplication.shared.firstKeyWindow?.rootViewController?.present(av, animated: true)
     }
 }
 
-// MARK: - One-line header with optional leading emoji; divider shrinks first (never shrink text)
+// MARK: - One-line header
 private struct OneLineHeaderRow<Trailing: View>: View {
     let leadingEmoji: String?
     let title: String
@@ -501,41 +600,32 @@ private struct OneLineHeaderRow<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if let emoji = leadingEmoji {
-                Text(emoji)
-                    .font(.title3) // similar visual weight to Daily icons
-            }
-
+            if let emoji = leadingEmoji { Text(emoji).font(.title3) }
             Text(title)
-                .font(.headline.weight(.semibold))          // match other headers
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(AppTheme.textPrimary)
                 .lineLimit(1)
-                .layoutPriority(2)                           // title wins space
-
-            // Divider consumes only leftover space; collapses to zero if needed
             Spacer(minLength: 6)
                 .frame(height: 1)
                 .overlay(Rectangle().fill(AppTheme.divider))
-                .layoutPriority(0)
-
-            if let w = trailingWidth {
-                trailing()
-                    .frame(width: w, alignment: .trailing)
-            } else {
-                trailing()
-            }
+            if let w = trailingWidth { trailing().frame(width: w, alignment: .trailing) } else { trailing() }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 0)
     }
 }
 
-// MARK: - Bullet + Plain (Daily-style) Notes Card
-private struct BulletPlainNotesCard: View {
+// MARK: - BulletNotesCard (auto-grow + wrap) — with onBeginEditing for auto-scroll
+private struct BulletNotesCard: View {
     @Binding var text: String
+    let placeholder: String
+    var onBeginEditing: () -> Void = {}
+    @State private var measuredHeight: CGFloat = 46
 
-    init(text: Binding<String>) {
-        self._text = text
+    init(text: Binding<String>, placeholder: String, onBeginEditing: @escaping () -> Void = {}) {
+        _text = text
+        self.placeholder = placeholder
+        self.onBeginEditing = onBeginEditing
     }
 
     var body: some View {
@@ -543,11 +633,18 @@ private struct BulletPlainNotesCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AppTheme.surfaceUI)
 
-            BulletCenteredTextView(
+            BulletTextViewSimple(
                 text: $text,
-                targetSingleLineHeight: 46
+                placeholder: placeholder,
+                onHeightChange: { h in
+                    let clamped = max(46, ceil(h))
+                    if abs(clamped - measuredHeight) > 0.5 {
+                        measuredHeight = clamped
+                    }
+                },
+                onBeginEditing: onBeginEditing
             )
-            .frame(minHeight: 46)
+            .frame(height: measuredHeight)
             .background(Color.clear)
         }
         .padding(.horizontal, 0)
@@ -555,97 +652,131 @@ private struct BulletPlainNotesCard: View {
     }
 }
 
-private struct BulletCenteredTextView: UIViewRepresentable {
+// MARK: - BulletTextViewSimple (measures sizeThatFits for word-wrap)
+private struct BulletTextViewSimple: UIViewRepresentable {
     @Binding var text: String
-    var targetSingleLineHeight: CGFloat = 46
+    var placeholder: String
+    var onHeightChange: (CGFloat) -> Void
+    var onBeginEditing: () -> Void = {}
 
     func makeUIView(context: Context) -> UITextView {
         let tv = UITextView()
         tv.backgroundColor = .clear
         tv.textColor = UIColor.white
         tv.tintColor = UIColor(AppTheme.appGreen)
-        tv.font = UIFont.preferredFont(forTextStyle: .body)
-        tv.isScrollEnabled = false
+        tv.font = UIFont.preferredFont(forTextStyle: .body)   // match Daily
+        tv.isScrollEnabled = false                            // let it grow
         tv.keyboardDismissMode = .interactive
         tv.textContainer.lineFragmentPadding = 0
+        tv.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        tv.textContainer.widthTracksTextView = true
+        tv.textContainer.lineBreakMode = .byWordWrapping
         tv.contentInset = .zero
+        tv.autocorrectionType = .yes
+        tv.autocapitalizationType = .sentences
+        tv.smartDashesType = .no
+        tv.smartQuotesType = .no
+        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
         tv.delegate = context.coordinator
 
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            tv.text = "- "
-            DispatchQueue.main.async { self.text = "- " }
-        } else {
-            tv.text = text
-        }
+        // Placeholder label
+        let label = UILabel()
+        label.text = placeholder.lowercased()
+        label.textColor = UIColor.white.withAlphaComponent(0.35)
+        label.font = tv.font
+        label.numberOfLines = 0
+        label.translatesAutoresizingMaskIntoConstraints = false
+        tv.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: tv.leadingAnchor, constant: 14),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: tv.trailingAnchor, constant: -8),
+            label.topAnchor.constraint(equalTo: tv.topAnchor, constant: 10)
+        ])
+        context.coordinator.placeholderLabel = label
 
-        applyCenteredInsets(to: tv)
+        tv.text = text
+        label.isHidden = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        DispatchQueue.main.async { self.remeasure(tv) }
         return tv
     }
 
     func updateUIView(_ uiView: UITextView, context: Context) {
-        if uiView.text != text { uiView.text = text }
-        applyCenteredInsets(to: uiView)
-    }
+        if uiView.text != text {
+            uiView.text = text
+        }
+        context.coordinator.placeholderLabel?.isHidden =
+            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-    private func applyCenteredInsets(to tv: UITextView) {
-        let font = tv.font ?? UIFont.preferredFont(forTextStyle: .body)
-        let asc  = font.ascender
-        let desc = abs(font.descender)
-        let lead = font.leading
-        let line = asc + desc + lead
-
-        let H: CGFloat = targetSingleLineHeight
-        let base = max(0, (H - line) / 2)
-        let top = (base).rounded(.toNearestOrEven)
-        let bottom = (base + 2.0).rounded(.toNearestOrEven) // slight bottom bias
-
-        tv.textContainerInset = UIEdgeInsets(top: top, left: 12, bottom: bottom, right: 12)
+        DispatchQueue.main.async { self.remeasure(uiView) }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: BulletCenteredTextView
-        init(_ parent: BulletCenteredTextView) { self.parent = parent }
+        var parent: BulletTextViewSimple
+        weak var placeholderLabel: UILabel?
 
-        func textViewDidChange(_ textView: UITextView) {
-            let raw = textView.text ?? ""
-            let fixed = enforceDashBullets(raw)
-            if fixed != raw {
-                let sel = textView.selectedRange
-                textView.text = fixed
-                let delta = fixed.count - raw.count
-                let newLoc = max(0, min((sel.location + delta), fixed.count))
-                textView.selectedRange = NSRange(location: newLoc, length: 0)
+        init(_ parent: BulletTextViewSimple) { self.parent = parent }
+
+        func textViewDidBeginEditing(_ textView: UITextView) {
+            if (textView.text ?? "").isEmpty {
+                textView.text = "• "
+                moveCaretToEnd(textView)
+                parent.text = textView.text
             }
-            parent.text = fixed
+            placeholderLabel?.isHidden = true
+            parent.onBeginEditing()              // trigger scrollTo for this field
+            parent.remeasure(textView)
         }
 
-        func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText repl: String) -> Bool {
+        func textViewDidEndEditing(_ textView: UITextView) {
+            let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            placeholderLabel?.isHidden = !trimmed.isEmpty
+            parent.remeasure(textView)
+        }
+
+        func textView(_ textView: UITextView,
+                      shouldChangeTextIn range: NSRange,
+                      replacementText repl: String) -> Bool {
             if repl == "\n" {
                 let ns = textView.text as NSString? ?? ""
-                let replaced = ns.replacingCharacters(in: range, with: "\n- ")
+                let replaced = ns.replacingCharacters(in: range, with: "\n• ")
                 textView.text = replaced
                 textView.selectedRange = NSRange(location: range.location + 3, length: 0)
-                textViewDidChange(textView)
+                parent.text = replaced
+                placeholderLabel?.isHidden = true
+                parent.remeasure(textView)
                 return false
             }
             return true
         }
 
-        private func enforceDashBullets(_ s: String) -> String {
-            var lines = s.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
-            if lines.isEmpty { return "- " }
-            for i in lines.indices {
-                if lines[i].isEmpty { lines[i] = "- " }
-                else if !lines[i].hasPrefix("- ") { lines[i] = "- " + lines[i] }
-            }
-            return lines.joined(separator: "\n")
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text ?? ""
+            let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            placeholderLabel?.isHidden = !trimmed.isEmpty
+            parent.remeasure(textView)
         }
+
+        private func moveCaretToEnd(_ tv: UITextView) {
+            let len = (tv.text as NSString).length
+            tv.selectedRange = NSRange(location: len, length: 0)
+        }
+    }
+
+    fileprivate func remeasure(_ tv: UITextView) {
+        var targetWidth = tv.bounds.width
+        if targetWidth <= 0 {
+            targetWidth = UIScreen.main.bounds.width - 32
+        }
+        let size = tv.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
+        onHeightChange(size.height)
     }
 }
 
-// MARK: - CheckSquare (copied from DailyView style)
+// MARK: - CheckSquare (matches Daily)
 private struct CheckSquare: View {
     let checked: Bool
     let onTap: () -> Void
@@ -664,26 +795,23 @@ private struct CheckSquare: View {
     }
 }
 
-// MARK: - Small helpers
-
+// MARK: - Compact list tweaks (fixed signature)
 private struct CompactListTweaks: ViewModifier {
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 17.0, *) {
-            content
-                .contentMargins(.vertical, 0)
-                .listSectionSpacing(.compact)
-                .listRowSpacing(0)
-        } else {
-            content
+        Group {
+            if #available(iOS 17.0, *) {
+                content
+                    .contentMargins(.vertical, 0)
+                    .listSectionSpacing(.compact)
+                    .listRowSpacing(0)
+            } else {
+                content
+            }
         }
     }
 }
 
-private extension String {
-    var isBlank: Bool { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-}
-
+// MARK: - Helpers
 private extension UIApplication {
     var firstKeyWindow: UIWindow? {
         connectedScenes
@@ -691,4 +819,23 @@ private extension UIApplication {
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
     }
+}
+
+private func pillarSubtitle(forLabel label: String) -> String {
+    switch label.lowercased() {
+    case "physiology":
+        return "The body is the universal address of your existence"
+    case "piety":
+        return "Using mystery & awe as the spirit speaks for the soul"
+    case "people":
+        return "Team Human: herd animals who exist in each other"
+    case "production":
+        return "A man produces more than he consumes"
+    default:
+        return ""
+    }
+}
+
+private extension String {
+    var isBlank: Bool { trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 }
