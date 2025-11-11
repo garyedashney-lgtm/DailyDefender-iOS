@@ -5,20 +5,24 @@ import UIKit
 
 struct DailyView: View {
     @EnvironmentObject var store: HabitStore
-    @EnvironmentObject var session: SessionViewModel   // ← added
+    @EnvironmentObject var session: SessionViewModel
 
-    // Celebration
+    // Celebration (UNCHANGED)
     @State private var showConfetti = false
     @State private var audioPlayer: AVAudioPlayer?
 
-    // Victory video (handled by separate VictoryVideoModal)
+    // Victory video (UNCHANGED)
     @State private var showVictoryModal = false
 
     // Profile / Shields
     @State private var showFourPs = false
-    @State private var goProfileEdit = false          // ← push navigation flag
+    @State private var goProfileEdit = false
 
-    // yyyy-MM-dd (for daily gating keys)
+    // Keyboard state
+    @State private var keyboardVisible = false
+    @State private var keyboardHeight: CGFloat = 0
+
+    // yyyy-MM-dd
     private var todayString: String {
         let f = DateFormatter()
         f.calendar = .init(identifier: .gregorian)
@@ -43,7 +47,7 @@ struct DailyView: View {
     }
     private var progress: Double { Double(completedCount) / Double(totalPossible) }
 
-    // Keys for gating
+    // Celebration keys (UNCHANGED)
     private var celebrate2Key: String { "celebrated2_\(todayString)" }
     private var prev2Key: String      { "prev2_\(todayString)" }
     private var celebrate4Key: String { "celebrated4_\(todayString)" }
@@ -59,7 +63,7 @@ struct DailyView: View {
     private func setCelebrated4(_ v: Bool) { UserDefaults.standard.set(v, forKey: celebrate4Key) }
     private func setPrev4(_ v: Bool)       { UserDefaults.standard.set(v, forKey: prev4Key) }
 
-    // To-Do persistent key (NOT day-scoped)
+    // To-Do persistence key (global)
     private let TODO_PERSIST_KEY = "focus_todo_list"
 
     var body: some View {
@@ -68,7 +72,7 @@ struct DailyView: View {
                 AppTheme.navy900.ignoresSafeArea()
 
                 List {
-                    // Progress bar
+                    // Progress
                     Section {
                         VStack(spacing: 8) {
                             ProgressView(value: progress)
@@ -83,22 +87,22 @@ struct DailyView: View {
                     }
                     .listRowBackground(AppTheme.surface)
 
-                    // 4 Pillars
+                    // Pillars
                     ForEach(Pillar.allCases, id: \.self) { pillar in
                         pillarBlock(pillar)
                     }
 
                     // To-Do
-                    todoBlock()
+                    todoBlock(extraBottom: keyboardExtraPadding())
                 }
                 .listStyle(.plain)
                 .scrollDismissesKeyboard(.interactively)
                 .scrollContentBackground(.hidden)
-                .padding(.bottom, 48)
+                .padding(.bottom, 48)                 // Footer space
                 .modifier(CompactListTweaks())
                 .withKeyboardDismiss()
-                
-                // Confetti
+
+                // Confetti (UNCHANGED)
                 if showConfetti {
                     ConfettiView()
                         .ignoresSafeArea()
@@ -106,7 +110,7 @@ struct DailyView: View {
                 }
             }
 
-            // Hidden push link to Profile Edit (keeps footer visible)
+            // Hidden push
             NavigationLink("", isActive: $goProfileEdit) {
                 ProfileEditView()
                     .environmentObject(store)
@@ -114,20 +118,18 @@ struct DailyView: View {
             }
             .hidden()
 
-
             // Toolbar
             .toolbar {
-                // LEFT — shield (4 Ps)
+                // LEFT — 4Ps
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showFourPs = true }) {
                         Image("four_ps")
-                            .resizable()
-                            .scaledToFit()
+                            .resizable().scaledToFit()
                             .frame(width: 36, height: 36)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
                             .padding(4)
-                            .offset(y: -2) // optical center
+                            .offset(y: -2)
                     }
                     .accessibilityLabel("Open 4 Ps Shield")
                 }
@@ -137,8 +139,7 @@ struct DailyView: View {
                     VStack(spacing: 2) {
                         HStack(spacing: 8) {
                             ZStack {
-                                Image(systemName: "square.fill")
-                                    .foregroundColor(AppTheme.appGreen)
+                                Image(systemName: "square.fill").foregroundColor(AppTheme.appGreen)
                                 Image(systemName: "checkmark")
                                     .foregroundColor(.white)
                                     .font(.system(size: 11, weight: .bold))
@@ -148,8 +149,7 @@ struct DailyView: View {
                             Text("Daily Defender Actions")
                                 .font(.headline.weight(.bold))
                                 .foregroundStyle(AppTheme.textPrimary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.9)
+                                .lineLimit(1).minimumScaleFactor(0.9)
                         }
                         Text("Today: \(todayString)")
                             .font(.caption)
@@ -158,7 +158,7 @@ struct DailyView: View {
                     }
                 }
 
-                // RIGHT — profile avatar → push ProfileEdit
+                // RIGHT — avatar → ProfileEdit
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
                         if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
@@ -173,41 +173,40 @@ struct DailyView: View {
                     }
                     .frame(width: 32, height: 32)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .offset(y: -2) // optical center
-                    .onTapGesture { goProfileEdit = true }   // ← push instead of sheet
+                    .offset(y: -2)
+                    .onTapGesture { goProfileEdit = true }
                     .accessibilityLabel("Profile")
                 }
             }
-            
-
-            // Keep these AFTER .toolbar
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.navy900, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-            // Four Ps shield (full screen)
-            .fullScreenCover(isPresented: $showFourPs) {
-                ShieldPage(imageName: "four_ps")
-            }
-
-            // Victory video (via standalone modal)
+            // Shields / video (UNCHANGED)
+            .fullScreenCover(isPresented: $showFourPs) { ShieldPage(imageName: "four_ps") }
             .fullScreenCover(isPresented: $showVictoryModal) {
-                VictoryVideoModal(
-                    videoName: "youareamazingguy",
-                    isPresented: $showVictoryModal
-                )
+                VictoryVideoModal(videoName: "youareamazingguy", isPresented: $showVictoryModal)
             }
 
-            // Seed gating
+            // Seed & keyboard observers
             .onAppear {
                 setPrev2(completedCount >= 2)
                 setPrev4(completedCount >= 4)
             }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
+                keyboardVisible = true
+                if let h = extractKeyboardHeight(from: note) { keyboardHeight = h }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+                keyboardVisible = false
+                keyboardHeight = 0
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+                if let h = extractKeyboardHeight(from: note) { keyboardHeight = h; keyboardVisible = h > 0 }
+            }
 
-            // Celebration triggers — UNCHANGED
+            // Celebrations (UNCHANGED)
             .onChange(of: completedCount) { newValue in
-                // 2-of-4
                 let nowAtLeast2 = newValue >= 2
                 if !nowAtLeast2 {
                     if hasCelebrated2 { setCelebrated2(false) }
@@ -219,7 +218,6 @@ struct DailyView: View {
                     setPrev2(true)
                 }
 
-                // 4-of-4
                 let nowAtLeast4 = newValue >= 4
                 if !nowAtLeast4 {
                     if hasCelebrated4 { setCelebrated4(false) }
@@ -234,6 +232,23 @@ struct DailyView: View {
         }
     }
 
+    // Extra List spacer only when keyboard is up (keeps bottom card off the keyboard)
+    private func keyboardExtraPadding() -> CGFloat {
+        guard keyboardVisible else { return 0 }
+        let cushion: CGFloat = 28
+        return min(max(keyboardHeight + cushion, 140), 280)
+    }
+
+    private func extractKeyboardHeight(from note: Notification) -> CGFloat? {
+        guard
+            let info = note.userInfo,
+            let endFrame = (info[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        else { return nil }
+        let screen = UIScreen.main.bounds
+        let overlap = max(0, screen.maxY - endFrame.minY)
+        return overlap
+    }
+
     // MARK: - Pillar block
     @ViewBuilder
     private func pillarBlock(_ pillar: Pillar) -> some View {
@@ -241,19 +256,16 @@ struct DailyView: View {
         let checked = store.completed.contains(pid)
 
         Section {
-            // Header row: flush-left like Weekly
             HStack(spacing: 8) {
                 SectionHeader(label: pillar.label, pillar: pillar, countText: nil)
                     .frame(maxWidth: .infinity, alignment: .leading)
-
                 CheckSquare(checked: checked) { store.toggle(pid) }
-                    .padding(.trailing, 6) // pull in a tad from screen edge
+                    .padding(.trailing, 14)
             }
             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
-            // Subtitle: flush-left, allow full wrapping
             Text(pillarSubtitle(forLabel: pillar.label))
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
@@ -262,39 +274,33 @@ struct DailyView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            // Full-width, centered input card
+            // MORE space between subtitle and focus card
             PlainNotesCard(
                 text: persistedFocus(for: pid),
                 placeholder: "Focused activity?",
                 onChange: { setPersistedFocus($0, for: pid) }
             )
+            .padding(.top, 8) // ↑ requested extra space
             .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
         }
     }
 
-    // MARK: - To-Do block
+    // MARK: - To-Do (Monthly look + Android behavior)
     @ViewBuilder
-    private func todoBlock() -> some View {
-        let todoId = "todo_list"
-        let checked = store.completed.contains(todoId)
-
+    private func todoBlock(extraBottom: CGFloat) -> some View {
         Section {
-            // Header row flush-left
             HStack(spacing: 8) {
-                Text("📝 To do List")
+                Text("📝 To-Do List")
                     .font(.body.weight(.semibold))
                 Spacer()
-                CheckSquare(checked: checked) { store.toggle(todoId) }
-                    .padding(.trailing, 6)
             }
             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
-            // Subtitle flush-left
-            Text("Capture key tasks that keep the day moving...")
+            Text("Capture tasks. Enter adds a new checkbox line. Checked items clear at midnight.")
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -302,19 +308,23 @@ struct DailyView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            // Full-width input card
-            PlainNotesCard(
-                text: persistedTodo(),
-                placeholder: "What’s the next task?",
-                onChange: { setPersistedTodo($0) }
-            )
-            .listRowInsets(.init(top: 0, leading: 0, bottom: 4, trailing: 0))
-            .listRowSeparator(.hidden)
-            .listRowBackground(AppTheme.navy900)
+            // MORE space between subtitle and the checklist card
+            TodoListCard(persistKey: TODO_PERSIST_KEY, todayString: todayString)
+                .padding(.top, 8) // ↑ requested extra space
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(AppTheme.navy900)
+
+            // Invisible spacer to keep the card comfortably above the keyboard
+            Color.clear
+                .frame(height: extraBottom)
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(AppTheme.navy900)
         }
     }
 
-    // MARK: - Persistence
+    // Pillar focus persistence
     private func focusKey(_ pid: String) -> String { "focus_\(pid)" }
     private func persistedFocus(for pid: String) -> String {
         UserDefaults.standard.string(forKey: focusKey(pid)) ?? ""
@@ -323,14 +333,7 @@ struct DailyView: View {
         UserDefaults.standard.set(v, forKey: focusKey(pid))
     }
 
-    private func persistedTodo() -> String {
-        UserDefaults.standard.string(forKey: TODO_PERSIST_KEY) ?? ""
-    }
-    private func setPersistedTodo(_ v: String) {
-        UserDefaults.standard.set(v, forKey: TODO_PERSIST_KEY)
-    }
-
-    // MARK: - Celebrations
+    // Celebrations (UNCHANGED)
     private func fireConfettiAndAudio() {
         withAnimation { showConfetti = true }
         if let url = Bundle.main.url(forResource: "welldone", withExtension: "mp3")
@@ -344,7 +347,7 @@ struct DailyView: View {
     }
 }
 
-// MARK: - Helpers & subviews (unchanged checkbox)
+/// Pillar checkbox button (bigger, easier to tap)
 private struct CheckSquare: View {
     let checked: Bool
     let onTap: () -> Void
@@ -356,14 +359,15 @@ private struct CheckSquare: View {
                     checked ? .white : AppTheme.textPrimary,
                     checked ? AppTheme.appGreen : .clear
                 )
-                .font(.title3)
-                .padding(6)
+                .font(.system(size: 26, weight: .medium))   // ↑ bigger icon than title3
+                .frame(width: 44, height: 44, alignment: .center) // ↑ Apple 44x44 tappable area
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
 }
 
-// MARK: - Plain (non-bullet) notes card with perfectly centered first line
+// PlainNotesCard (unchanged)
 private struct PlainNotesCard: View {
     @State private var textInternal: String
     @FocusState private var isFocused: Bool
@@ -381,7 +385,6 @@ private struct PlainNotesCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AppTheme.surfaceUI)
 
-            // Placeholder overlay (unchanged look)
             if textInternal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(placeholder)
                     .font(.callout.italic())
@@ -404,7 +407,7 @@ private struct PlainNotesCard: View {
     }
 }
 
-// MARK: - UIKit text view that centers the baseline for single-line text (matching Weekly)
+// TextView used in PlainNotesCard
 private struct CenteredTextView: UIViewRepresentable {
     @Binding var text: String
     var onChanged: (String) -> Void
@@ -442,7 +445,6 @@ private struct CenteredTextView: UIViewRepresentable {
         let H: CGFloat = targetSingleLineHeight
         let base = max(0, (H - line) / 2)
 
-        // slight bottom bias to look optically centered
         let top = base.rounded(.toNearestOrEven)
         let bottom = (base + 2.0).rounded(.toNearestOrEven)
 
@@ -463,7 +465,7 @@ private struct CenteredTextView: UIViewRepresentable {
     }
 }
 
-// Existing helpers
+// Compact list tweaks
 private struct CompactListTweaks: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
@@ -476,17 +478,19 @@ private struct CompactListTweaks: ViewModifier {
     }
 }
 
+// Full pillar subtitles
 private func pillarSubtitle(forLabel label: String) -> String {
     switch label.lowercased() {
     case "physiology":
-        return "The body is the universal address of your existence..."
+        return "The body is the universal address of your existence: Breath, walk, lift, bike, hike, stretch, sleep, fast, eat clean, supplement, hydrate, etc."
     case "piety":
-        return "Using mystery & awe as the spirit speaks for the soul..."
+        return "Using mystery & awe as the spirit speaks for the soul: 3 blessings, waking up, end-of-day prayer, body scan & resets, the watcher, etc."
     case "people":
-        return "Team Human: herd animals who exist in each other..."
+        return "Team Human: herd animals who exist in each other: Light people up, reverse the flow, problem solve & collaborate in Defense of Meaning and Freedom, etc."
     case "production":
-        return "A man produces more than he consumes..."
-    default: return ""
+        return "A man produces more than he consumes: Set goals, share talents, make the job the boss, track progress, Pareto Principle, no one outworks me, etc."
+    default:
+        return ""
     }
 }
 
@@ -529,4 +533,261 @@ private struct ConfettiView: UIViewRepresentable {
         return view
     }
     func updateUIView(_ uiView: UIView, context: Context) {}
+}
+
+// ===== To-Do List (Monthly look + Android behavior, tighter spacing) =====
+private struct TodoListCard: View {
+    let persistKey: String
+    let todayString: String
+
+    private let CONTROL: Character = "\u{0001}"
+    private let SEP: Character = "|"
+    private let ITEM_SEP: Character = "\u{0002}"
+
+    struct TodoItem: Identifiable, Equatable {
+        var id: UUID
+        var text: String
+        var done: Bool
+        var checkedOn: String
+    }
+
+    @State private var items: [TodoItem] = []
+    @State private var focusedId: UUID?
+    @State private var caretToEndId: UUID?
+
+    var body: some View {
+        VStack(spacing: 4) {
+            VStack(spacing: 0) {
+                if items.isEmpty {
+                    Button {
+                        let new = TodoItem(id: UUID(), text: "", done: false, checkedOn: "")
+                        items.append(new); save(); focusedId = new.id
+                    } label: {
+                        HStack(alignment: .center, spacing: 6) {
+                            Image(systemName: "square")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(AppTheme.textPrimary, .clear)
+                                .font(.title3)
+                            Text("Enter to-do…")
+                                .font(.callout.italic())
+                                .foregroundStyle(AppTheme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 6)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                }
+
+                ForEach(Array(items.enumerated()), id: \.1.id) { idx, item in
+                    HStack(alignment: .center, spacing: 6) { // tighter between checkbox and text
+                        // Monthly-style checkbox
+                        Button {
+                            toggleDone(index: idx)
+                        } label: {
+                            Image(systemName: item.done ? "checkmark.square.fill" : "square")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(item.done ? .white : AppTheme.textPrimary,
+                                                 item.done ? AppTheme.appGreen : .clear)
+                                .font(.title3)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(item.done ? "Mark not done" : "Mark done")
+
+                        TodoRowTextView(
+                            text: item.text,
+                            isFocused: focusedId == item.id,
+                            moveCaretToEnd: caretToEndId == item.id,
+                            onBeginEditing: { focusedId = item.id },
+                            onChange: { newText in
+                                items[idx].text = newText; save()
+                            },
+                            onSplitAtNewline: { before, after in
+                                items[idx].text = before
+                                let new = TodoItem(id: UUID(), text: after, done: false, checkedOn: "")
+                                items.insert(new, at: idx + 1)
+                                save()
+                                focusedId = new.id
+                            },
+                            onBackspaceAtStart: {
+                                guard idx > 0 else { return }
+                                let prevId = items[idx - 1].id
+                                if items.indices.contains(idx) {
+                                    items.remove(at: idx); save()
+                                }
+                                focusedId = prevId
+                                caretToEndId = prevId
+                            },
+                            onBlurEmpty: {
+                                if items.indices.contains(idx),
+                                   items[idx].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                                   !items[idx].done {
+                                    items.remove(at: idx); save()
+                                }
+                            }
+                        )
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)  // tighter line spacing
+                }
+            }
+            // Card padding: tighter top/bottom, normal sides
+            .padding(.vertical, 6)     // ↓ tighter distance to first/last checkbox
+            .padding(.horizontal, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.surfaceUI)
+                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+            )
+        }
+        .padding(.horizontal, 0)
+        .padding(.vertical, 4)
+        .onAppear {
+            items = load()
+            pruneCheckedFromPriorDays()
+            pruneEmptyRows()
+            save()
+        }
+    }
+
+    // Actions
+    private func toggleDone(index: Int) {
+        guard items.indices.contains(index) else { return }
+        items[index].done.toggle()
+        items[index].checkedOn = items[index].done ? todayString : ""
+        save()
+    }
+
+    private func pruneCheckedFromPriorDays() {
+        items.removeAll { $0.done && !$0.checkedOn.isEmpty && $0.checkedOn != todayString }
+    }
+
+    private func pruneEmptyRows() {
+        items.removeAll { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !$0.done }
+    }
+
+    // Persistence
+    private func load() -> [TodoItem] {
+        let blob = UserDefaults.standard.string(forKey: persistKey) ?? ""
+        guard !blob.isEmpty else { return [] }
+        let parts = blob.split(separator: ITEM_SEP, omittingEmptySubsequences: true)
+        var out: [TodoItem] = []
+        for p in parts {
+            let s = String(p)
+            if let item = decodeOne(s) { out.append(item) }
+        }
+        return out
+    }
+
+    private func save() {
+        let payload = items
+            .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0.done }
+            .map { encodeOne($0) }
+            .joined(separator: String(ITEM_SEP))
+        UserDefaults.standard.set(payload, forKey: persistKey)
+    }
+
+    private func encodeOne(_ item: TodoItem) -> String {
+        let flag = item.done ? "1" : "0"
+        let safeText = item.text.replacingOccurrences(of: String(ITEM_SEP), with: " ")
+        return "\(CONTROL)\(flag)\(SEP)\(item.checkedOn)\(SEP)\(safeText)"
+    }
+
+    private func decodeOne(_ raw: String) -> TodoItem? {
+        guard !raw.isEmpty else { return nil }
+        var rest = raw
+        guard rest.first == CONTROL else {
+            return TodoItem(id: UUID(), text: raw, done: false, checkedOn: "")
+        }
+        rest.removeFirst()
+        guard let i1 = rest.firstIndex(of: SEP) else { return nil }
+        let flag = String(rest[..<i1]) == "1"
+        let r1 = rest[rest.index(after: i1)...]
+        guard let i2 = r1.firstIndex(of: SEP) else { return nil }
+        let checked = String(r1[..<i2])
+        let text = String(r1[r1.index(after: i2)...])
+        return TodoItem(id: UUID(), text: text, done: flag, checkedOn: checked)
+    }
+}
+
+// Row editor
+private struct TodoRowTextView: UIViewRepresentable {
+    let text: String
+    let isFocused: Bool
+    let moveCaretToEnd: Bool
+    var onBeginEditing: () -> Void
+    var onChange: (String) -> Void
+    var onSplitAtNewline: (_ before: String, _ after: String) -> Void
+    var onBackspaceAtStart: () -> Void
+    var onBlurEmpty: () -> Void
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.backgroundColor = .clear
+        tv.textColor = UIColor.white
+        tv.tintColor = UIColor(AppTheme.appGreen)
+        tv.font = UIFont.preferredFont(forTextStyle: .body)
+        tv.isScrollEnabled = false
+        tv.keyboardDismissMode = .interactive
+        tv.textContainer.lineFragmentPadding = 0
+        tv.textContainerInset = UIEdgeInsets(top: 4, left: 0, bottom: 4, right: 0) // tighter row height
+        tv.contentInset = .zero
+        tv.textAlignment = .natural
+        tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        tv.delegate = context.coordinator
+        tv.text = text
+        return tv
+    }
+
+    func updateUIView(_ uiView: UITextView, context: Context) {
+        if uiView.text != text { uiView.text = text }
+        if isFocused, !uiView.isFirstResponder {
+            uiView.becomeFirstResponder()
+            if moveCaretToEnd {
+                let ns = uiView.text as NSString
+                uiView.selectedRange = NSRange(location: ns.length, length: 0)
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: TodoRowTextView
+        init(_ parent: TodoRowTextView) { self.parent = parent }
+
+        func textViewDidBeginEditing(_ textView: UITextView) { parent.onBeginEditing() }
+
+        func textView(_ textView: UITextView,
+                      shouldChangeTextIn range: NSRange,
+                      replacementText text: String) -> Bool {
+            if text == "\n" {
+                let ns = textView.text as NSString
+                let before = ns.substring(to: range.location)
+                let after  = ns.substring(from: range.location)
+                textView.text = before
+                parent.onChange(before)
+                DispatchQueue.main.async { self.parent.onSplitAtNewline(before, after) }
+                return false
+            }
+            if text.isEmpty && range.length == 1 && range.location == 0 {
+                if let sel = textView.selectedTextRange,
+                   textView.offset(from: textView.beginningOfDocument, to: sel.start) == 0,
+                   textView.offset(from: sel.start, to: sel.end) == 0 {
+                    parent.onBackspaceAtStart()
+                    return false
+                }
+            }
+            return true
+        }
+
+        func textViewDidChange(_ textView: UITextView) { parent.onChange(textView.text ?? "") }
+
+        func textViewDidEndEditing(_ textView: UITextView) {
+            let txt = (textView.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if txt.isEmpty { parent.onBlurEmpty() }
+        }
+    }
 }
