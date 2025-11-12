@@ -291,15 +291,16 @@ struct DailyView: View {
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
 
+            // ⬇️ SUB-TEXT INDENT FIX
             Text(pillarSubtitle(forLabel: pillar.label))
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowInsets(.init(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
-            // Notes card — auto-grow, wraps, paragraph spacing and focus headroom
+            // Notes card
             PlainNotesCard(
                 text: persistedFocus(for: pid),
                 placeholder: "Focused activity?",
@@ -551,12 +552,12 @@ private struct TodoListCard: View {
             .padding(.horizontal, 4)
             .padding(.top, 4)
 
-            // Subtitle
+            // Subtitle — INDENT FIX
             Text("Checked items clear at midnight.")
                 .font(.caption.italic())
                 .foregroundStyle(AppTheme.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 4)
+                .padding(.horizontal, 16)
                 .fixedSize(horizontal: false, vertical: true)
 
             // Rows
@@ -749,8 +750,9 @@ private struct TodoRowView: View {
     @State private var measuredHeight: CGFloat = 22
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            // Checkbox (fixed) — explicitly dismiss KB before toggling
+        // ⬇️ VERTICAL CENTERING FIX: align items by center; ensure a minimum row height
+        HStack(alignment: .center, spacing: 8) {
+            // Checkbox (fixed)
             Button(action: {
                 #if canImport(UIKit)
                 UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
@@ -766,7 +768,6 @@ private struct TodoRowView: View {
                     .frame(width: 36, height: 36, alignment: .center)
             }
             .buttonStyle(.plain)
-            .padding(.top, 2)
             .padding(.leading, -6)
 
             // Editor column (flexible, wraps)
@@ -788,7 +789,8 @@ private struct TodoRowView: View {
                         if abs(hClamped - measuredHeight) > 0.5 { measuredHeight = hClamped }
                     }
                 )
-                .frame(height: measuredHeight)
+                // Ensure the text column isn’t shorter than the icons (centers vertically)
+                .frame(height: max(28, measuredHeight))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .layoutPriority(1)
@@ -803,11 +805,12 @@ private struct TodoRowView: View {
                     .frame(width: 28, height: 28, alignment: .center)
             }
             .buttonStyle(.plain)
-            .padding(.top, 2)
         }
         .onAppear { textInternal = item.text }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
+        // Guarantee a minimum row height so center alignment works cleanly
+        .frame(minHeight: 36)
     }
 }
 
