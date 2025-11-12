@@ -1,132 +1,150 @@
 import SwiftUI
-import UIKit
 
 struct MoreView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
+    @Environment(\.dismiss) private var dismiss
 
-    // Nav flags
+    // Nav pushes
     @State private var goInfo = false
     @State private var goResources = false
     @State private var goStats = false
+
+    // Header actions
     @State private var showProfileEdit = false
     @State private var showShield = false
 
-    // Same shield asset used in JournalHome
-    private let shieldAsset = "AppShieldSquare"
-
     var body: some View {
-        if !session.isPro {
-            PaywallCardView(title: "Pro Feature")
-        } else {
-            NavigationStack {
-                ZStack {
-                    AppTheme.navy900.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                AppTheme.navy900.ignoresSafeArea()
 
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-
-                            // --- Cards ---
-                            MoreCardRow(title: "How To Use App", emoji: "📖") {
-                                goInfo = true
-                            }
-
-                            MoreCardRow(title: "Resources", emoji: "📚") {
-                                goResources = true
-                            }
-
-                            MoreCardRow(title: "Stats", emoji: "📊") {
-                                goStats = true
-                            }
-
-                            Spacer(minLength: 56)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                    }
-                }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(AppTheme.navy900, for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
-
-                // === Toolbar/Header ===
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(action: { showShield = true }) {
-                            (UIImage(named: shieldAsset) != nil
-                             ? Image(shieldAsset).resizable().scaledToFit()
-                             : Image("AppShieldSquare").resizable().scaledToFit())
-                            .frame(width: 36, height: 36)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                            .padding(4)
-                            .offset(y: -2)
-                        }
-                        .accessibilityLabel("Open More shield")
-                    }
-
-                    ToolbarItem(placement: .principal) {
-                        VStack(spacing: 6) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // Section header style matches Journal
+                        HStack(spacing: 10) {
+                            Text("🧭")
+                                .font(.system(size: 22))
                             Text("More")
                                 .font(.title3.weight(.semibold))
-                                .foregroundStyle(AppTheme.textPrimary)
+                                .foregroundColor(AppTheme.textPrimary)
+                            Spacer()
                         }
-                        .padding(.bottom, 10)
-                    }
+                        .padding(.horizontal, 4)
+                        .padding(.top, 4)
+                        .padding(.bottom, 2)
 
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Group {
-                            if let path = store.profile.photoPath,
-                               let ui = UIImage(contentsOfFile: path) {
-                                Image(uiImage: ui).resizable().scaledToFill()
-                            } else if UIImage(named: "ATMPic") != nil {
-                                Image("ATMPic").resizable().scaledToFill()
-                            } else {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, AppTheme.appGreen)
-                            }
+                        // Cards
+                        MoreCardRow(title: "How To Use App", emoji: "📖") {
+                            goInfo = true
                         }
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        MoreCardRow(title: "Resources", emoji: "📚") {
+                            goResources = true
+                        }
+                        MoreCardRow(title: "Stats", emoji: "📊") {
+                            goStats = true
+                        }
+
+                        Spacer(minLength: 56)
+                    }
+                    .padding(.horizontal, 16)   // same horizontal pad as Journal
+                    .padding(.top, 12)
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.navy900, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                // LEFT — same shield asset style as Journal Home
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { showShield = true }) {
+                        (UIImage(named: "AppShieldSquare") != nil
+                         ? Image("AppShieldSquare").resizable().scaledToFit()
+                         : Image("four_ps").resizable().scaledToFit())
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                        .padding(4)
                         .offset(y: -2)
-                        .onTapGesture { showProfileEdit = true }
-                        .accessibilityLabel("Profile")
                     }
+                    .accessibilityLabel("Open page shield")
                 }
 
-                // === Sheets / Navs ===
-                .fullScreenCover(isPresented: $showShield) {
-                    ShieldPage(imageName: shieldAsset)
+                // CENTER — title
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 6) {
+                        Text("More")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(AppTheme.textPrimary)
+                    }
+                    .padding(.bottom, 10)
                 }
 
-                .sheet(isPresented: $showProfileEdit) {
-                    ProfileEditView().environmentObject(store)
+                // RIGHT — avatar → ProfileEdit
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Group {
+                        if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                        } else if UIImage(named: "ATMPic") != nil {
+                            Image("ATMPic").resizable().scaledToFill()
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, AppTheme.appGreen)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .offset(y: -2)
+                    .onTapGesture { showProfileEdit = true }
+                    .accessibilityLabel("Profile")
                 }
+            }
+            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-                NavigationLink("", isActive: $goInfo) {
-                    MoreInfoHowToStub()
-                }.hidden()
+            // Destinations (listen for .moreTabTapped if your app posts it)
+            .navigationDestination(isPresented: $goInfo) {
+                InfoView()
+                    .environmentObject(store)
+                    .environmentObject(session)
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Footer.MoreTabTapped"))) { _ in
+                        dismiss()
+                    }
+            }
+            .navigationDestination(isPresented: $goResources) {
+                ResourcesView()
+                    .environmentObject(store)
+                    .environmentObject(session)
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Footer.MoreTabTapped"))) { _ in
+                        dismiss()
+                    }
+            }
+            .navigationDestination(isPresented: $goStats) {
+                StatsView()
+                    .environmentObject(store)
+                    .environmentObject(session)
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Footer.MoreTabTapped"))) { _ in
+                        dismiss()
+                    }
+            }
 
-                NavigationLink("", isActive: $goResources) {
-                    MoreResourcesStub()
-                }.hidden()
-
-                NavigationLink("", isActive: $goStats) {
-                    StatsView()
-                        .environmentObject(store)
-                        .environmentObject(session)
-                }.hidden()
+            // Sheets
+            .fullScreenCover(isPresented: $showShield) {
+                ShieldPage(imageName: "AppShieldSquare")
+            }
+            .sheet(isPresented: $showProfileEdit) {
+                ProfileEditView()
+                    .environmentObject(store)
+                    .environmentObject(session)
             }
         }
     }
 }
 
-// ==== Card identical layout to JournalCardRow ====
+// MARK: - Card Row (matches Journal look)
 private struct MoreCardRow: View {
     let title: String
-    var subtitle: String? = nil
     let emoji: String
     let action: () -> Void
 
@@ -141,19 +159,10 @@ private struct MoreCardRow: View {
                         .font(.system(size: 20))
                 }
 
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(AppTheme.textPrimary)
-                        .lineLimit(1)
-                    if let subtitle {
-                        Text(subtitle)
-                            .font(.footnote.italic())
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .lineLimit(1)
-                    }
-                }
-                .layoutPriority(1)
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+                    .lineLimit(1)
 
                 Spacer()
                 Image(systemName: "chevron.right")
@@ -167,30 +176,5 @@ private struct MoreCardRow: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-// ==== Simple stubs (replace later if needed) ====
-private struct MoreInfoHowToStub: View {
-    var body: some View {
-        ZStack {
-            AppTheme.navy900.ignoresSafeArea()
-            Text("How To Use App")
-                .foregroundStyle(AppTheme.textPrimary)
-        }
-        .navigationTitle("How To Use App")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct MoreResourcesStub: View {
-    var body: some View {
-        ZStack {
-            AppTheme.navy900.ignoresSafeArea()
-            Text("Resources")
-                .foregroundStyle(AppTheme.textPrimary)
-        }
-        .navigationTitle("Resources")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
