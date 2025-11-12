@@ -7,11 +7,11 @@ struct DailyView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
 
-    // Celebration (UNCHANGED)
+    // Celebration
     @State private var showConfetti = false
     @State private var audioPlayer: AVAudioPlayer?
 
-    // Victory video (UNCHANGED)
+    // Victory video
     @State private var showVictoryModal = false
 
     // Profile / Shields
@@ -50,7 +50,7 @@ struct DailyView: View {
     }
     private var progress: Double { Double(completedCount) / Double(totalPossible) }
 
-    // Celebration keys (UNCHANGED)
+    // Celebration keys
     private var celebrate2Key: String { "celebrated2_\(todayString)" }
     private var prev2Key: String      { "prev2_\(todayString)" }
     private var celebrate4Key: String { "celebrated4_\(todayString)" }
@@ -96,8 +96,13 @@ struct DailyView: View {
                             pillarBlock(pillar, proxy: proxy)
                         }
 
-                        // To-Do
-                        todoBlock()
+                        // To-Do (card includes its own title line with +)
+                        Section {
+                            TodoListCard(persistKey: TODO_PERSIST_KEY, todayString: todayString)
+                                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(AppTheme.navy900)
+                        }
 
                         // Small bottom spacer so you can always scroll past the last card
                         Section { Color.clear.frame(height: 24) }
@@ -109,7 +114,17 @@ struct DailyView: View {
                     .scrollContentBackground(.hidden)
                     .modifier(CompactListTweaks())
                     .withKeyboardDismiss()
+
+                    // ⬇️ Confetti overlay — always on top of the List/toolbar
+                    if showConfetti {
+                        ConfettiView()
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                            .zIndex(999)
+                            .transition(.opacity)
+                    }
                 }
+                // modest headroom so last editor stays above footer/keyboard
                 .safeAreaInset(edge: .bottom) {
                     Color.clear
                         .frame(height: (keyboardVisible || anyEditorFocused) ? 104 : 64)
@@ -127,6 +142,7 @@ struct DailyView: View {
 
             // Toolbar
             .toolbar {
+                // LEFT — 4Ps
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showFourPs = true }) {
                         Image("four_ps")
@@ -140,6 +156,7 @@ struct DailyView: View {
                     .accessibilityLabel("Open 4 Ps Shield")
                 }
 
+                // CENTER — title/date
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 2) {
                         HStack(spacing: 8) {
@@ -163,6 +180,7 @@ struct DailyView: View {
                     }
                 }
 
+                // RIGHT — avatar → ProfileEdit
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
                         if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
@@ -186,7 +204,7 @@ struct DailyView: View {
             .toolbarBackground(AppTheme.navy900, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
 
-            // Shields / video (UNCHANGED)
+            // Shields / video
             .fullScreenCover(isPresented: $showFourPs) { ShieldPage(imageName: "four_ps") }
             .fullScreenCover(isPresented: $showVictoryModal) {
                 VictoryVideoModal(videoName: "youareamazingguy", isPresented: $showVictoryModal)
@@ -209,7 +227,7 @@ struct DailyView: View {
                 if let h = extractKeyboardHeight(from: note) { keyboardHeight = h; keyboardVisible = h > 0 }
             }
 
-            // Celebrations (UNCHANGED)
+            // Celebrations
             .onChange(of: completedCount) { newValue in
                 let nowAtLeast2 = newValue >= 2
                 if !nowAtLeast2 {
@@ -281,6 +299,7 @@ struct DailyView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
 
+            // Notes card — auto-grow, wraps, paragraph spacing and focus headroom
             PlainNotesCard(
                 text: persistedFocus(for: pid),
                 placeholder: "Focused activity?",
@@ -298,41 +317,16 @@ struct DailyView: View {
         }
     }
 
-    // MARK: - To-Do list
-    @ViewBuilder
-    private func todoBlock() -> some View {
-        Section {
-            HStack(spacing: 8) {
-                Text("📝 To-Do List")
-                    .font(.body.weight(.semibold))
-                Spacer()
-            }
-            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-            .listRowSeparator(.hidden)
-            .listRowBackground(AppTheme.navy900)
-
-            Text("Capture tasks. Enter adds a new checkbox line. Checked items clear at midnight.")
-                .font(.caption.italic())
-                .foregroundStyle(AppTheme.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(AppTheme.navy900)
-
-            TodoListCard(persistKey: TODO_PERSIST_KEY, todayString: todayString)
-                .padding(.top, 8)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-                .listRowSeparator(.hidden)
-                .listRowBackground(AppTheme.navy900)
-        }
-    }
-
     // Pillar focus persistence
     private func focusKey(_ pid: String) -> String { "focus_\(pid)" }
-    private func persistedFocus(for pid: String) -> String { UserDefaults.standard.string(forKey: focusKey(pid)) ?? "" }
-    private func setPersistedFocus(_ v: String, for pid: String) { UserDefaults.standard.set(v, forKey: focusKey(pid)) }
+    private func persistedFocus(for pid: String) -> String {
+        UserDefaults.standard.string(forKey: focusKey(pid)) ?? ""
+    }
+    private func setPersistedFocus(_ v: String, for pid: String) {
+        UserDefaults.standard.set(v, forKey: focusKey(pid))
+    }
 
-    // Celebrations (UNCHANGED)
+    // Celebrations
     private func fireConfettiAndAudio() {
         withAnimation { showConfetti = true }
         if let url = Bundle.main.url(forResource: "welldone", withExtension: "mp3")
@@ -340,7 +334,9 @@ struct DailyView: View {
             audioPlayer = try? AVAudioPlayer(contentsOf: url)
             audioPlayer?.play()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { showConfetti = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            showConfetti = false
+        }
     }
 }
 
@@ -508,7 +504,7 @@ private struct AutoGrowTextView: UIViewRepresentable {
     }
 }
 
-// ===== To-Do List (wrapping + id-based mutation to avoid index crashes) =====
+// ===== To-Do List (wrapping + id-based mutation, Done closes KB, + button on title line) =====
 private struct TodoListCard: View {
     let persistKey: String
     let todayString: String
@@ -529,19 +525,52 @@ private struct TodoListCard: View {
     @State private var caretToEndId: UUID?
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 8) {
+            // Title line with + aligned with the trailing column (like section checkboxes)
+            HStack(spacing: 8) {
+                Text("📝 To-Do List")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.textPrimary)
+
+                Spacer(minLength: 0)
+
+                Button {
+                    addNewAndFocus()
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 30, height: 30)
+                        .foregroundStyle(AppTheme.appGreen)
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, 14)   // align with trailing column
+                .padding(.top, 2)
+                .accessibilityLabel("Add to-do")
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
+
+            // Subtitle
+            Text("Checked items clear at midnight.")
+                .font(.caption.italic())
+                .foregroundStyle(AppTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.leading, 4)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Rows
             VStack(spacing: 0) {
                 if items.isEmpty {
                     Button {
-                        let new = TodoItem(id: UUID(), text: "", done: false, checkedOn: "")
-                        items.append(new); save(); focusedId = new.id
+                        addNewAndFocus()
                     } label: {
                         HStack(alignment: .center, spacing: 6) {
                             Image(systemName: "square")
                                 .symbolRenderingMode(.palette)
                                 .foregroundStyle(AppTheme.textPrimary, .clear)
                                 .font(.title3)
-                            Text("Enter to-do…")
+                            Text("Add first to-do…")
                                 .font(.callout.italic())
                                 .foregroundStyle(AppTheme.textSecondary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -566,15 +595,8 @@ private struct TodoListCard: View {
                             save()
                         },
 
-                        onSplitAtNewline: { before, after in
-                            // Finish editing current row text and insert a new row after it.
+                        onDone: {
                             resignFirstResponder()
-                            guard let i = index(for: item.id) else { return }
-                            items[i].text = before
-                            let new = TodoItem(id: UUID(), text: after, done: false, checkedOn: "")
-                            items.insert(new, at: i + 1)
-                            save()
-                            focusedId = new.id
                         },
 
                         onBackspaceAtStart: {
@@ -589,7 +611,7 @@ private struct TodoListCard: View {
                         },
 
                         onBlurEmpty: {
-                            // Remove empty row only if still present
+                            // Remove empty row if still present
                             guard let i = index(for: item.id) else { return }
                             if items[i].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                                !items[i].done {
@@ -599,6 +621,11 @@ private struct TodoListCard: View {
                         },
 
                         onToggleDone: {
+                            // ⬅️ prevent keyboard on toggle and avoid re-focus
+                            focusedId = nil
+                            caretToEndId = nil
+                            resignFirstResponder()
+
                             guard let i = index(for: item.id) else { return }
                             items[i].done.toggle()
                             items[i].checkedOn = items[i].done ? todayString : ""
@@ -633,6 +660,14 @@ private struct TodoListCard: View {
     }
 
     // MARK: - Helpers
+
+    private func addNewAndFocus() {
+        let new = TodoItem(id: UUID(), text: "", done: false, checkedOn: "")
+        items.append(new)
+        save()
+        focusedId = new.id
+        caretToEndId = new.id
+    }
 
     private func index(for id: UUID) -> Int? {
         items.firstIndex { $0.id == id }
@@ -704,7 +739,7 @@ private struct TodoRowView: View {
     var moveCaretToEnd: Bool
     var onBeginEditing: () -> Void
     var onChange: (String) -> Void
-    var onSplitAtNewline: (_ before: String, _ after: String) -> Void
+    var onDone: () -> Void
     var onBackspaceAtStart: () -> Void
     var onBlurEmpty: () -> Void
     var onToggleDone: () -> Void
@@ -715,17 +750,24 @@ private struct TodoRowView: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            // Checkbox (fixed)
-            Button(action: onToggleDone) {
+            // Checkbox (fixed) — explicitly dismiss KB before toggling
+            Button(action: {
+                #if canImport(UIKit)
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                to: nil, from: nil, for: nil)
+                #endif
+                onToggleDone()
+            }) {
                 Image(systemName: item.done ? "checkmark.square.fill" : "square")
                     .symbolRenderingMode(.palette)
                     .foregroundStyle(item.done ? .white : AppTheme.textPrimary,
                                      item.done ? AppTheme.appGreen : .clear)
-                    .font(.title3)
-                    .frame(width: 28, height: 28, alignment: .center)
+                    .font(.system(size: 26, weight: .medium))
+                    .frame(width: 36, height: 36, alignment: .center)
             }
             .buttonStyle(.plain)
             .padding(.top, 2)
+            .padding(.leading, -6)
 
             // Editor column (flexible, wraps)
             VStack(spacing: 0) {
@@ -738,7 +780,7 @@ private struct TodoRowView: View {
                         textInternal = newText
                         onChange(newText)
                     },
-                    onSplitAtNewline: onSplitAtNewline,
+                    onDone: onDone,
                     onBackspaceAtStart: onBackspaceAtStart,
                     onBlurEmpty: onBlurEmpty,
                     onHeightChange: { h in
@@ -769,14 +811,14 @@ private struct TodoRowView: View {
     }
 }
 
-// Auto-grow UITextView specialized for To-Do rows (wraps, measures height)
+// Auto-grow UITextView specialized for To-Do rows (wraps, measures height, Return=Done)
 private struct AutoGrowRowTextView: UIViewRepresentable {
     var text: String
     var isFocused: Bool
     var moveCaretToEnd: Bool
     var onBeginEditing: () -> Void
     var onChange: (String) -> Void
-    var onSplitAtNewline: (_ before: String, _ after: String) -> Void
+    var onDone: () -> Void
     var onBackspaceAtStart: () -> Void
     var onBlurEmpty: () -> Void
     var onHeightChange: (CGFloat) -> Void
@@ -797,6 +839,7 @@ private struct AutoGrowRowTextView: UIViewRepresentable {
         tv.autocapitalizationType = .sentences
         tv.smartDashesType = .no
         tv.smartQuotesType = .no
+        tv.returnKeyType = .done            // show Done
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
         tv.delegate = context.coordinator
@@ -834,12 +877,9 @@ private struct AutoGrowRowTextView: UIViewRepresentable {
                       shouldChangeTextIn range: NSRange,
                       replacementText text: String) -> Bool {
             if text == "\n" {
-                let ns = textView.text as NSString
-                let before = ns.substring(to: range.location)
-                let after  = ns.substring(from: range.location)
-                textView.text = before
-                parent.onChange(before)
-                DispatchQueue.main.async { self.parent.onSplitAtNewline(before, after) }
+                // Done: dismiss keyboard, do not insert newline
+                textView.resignFirstResponder()
+                parent.onDone()
                 parent.remeasure(textView)
                 return false
             }
@@ -906,7 +946,7 @@ private func pillarSubtitle(forLabel label: String) -> String {
     }
 }
 
-// Confetti unchanged
+// Confetti
 private struct ConfettiView: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let view = UIView()
