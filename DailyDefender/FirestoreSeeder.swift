@@ -41,17 +41,30 @@ enum FirestoreSeeder {
             putIfMissing("role", "member")
             putIfMissing("squadId", "")
 
+            // First write: merge base profile + counters
             try await userRef.setData(toMerge, merge: true)
 
-            // Second write: attempt pro=true (rules will allow only if on allowlist)
+            // Second write: sync tier from allowlist, if present (mirrors Android behavior)
             do {
-                try await userRef.updateData(["pro": true])
-                #if DEBUG
-                print("Seeder: pro promotion succeeded (allowlist ok)")
-                #endif
+                let emailLower = email.lowercased()
+                let allowRef = db.collection("allowlist").document(emailLower)
+                let allowSnap = try await allowRef.getDocument()
+
+                if let allowData = allowSnap.data(),
+                   let allowTier = (allowData["tier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !allowTier.isEmpty {
+                    try await userRef.updateData(["tier": allowTier])
+                    #if DEBUG
+                    print("Seeder: tier sync succeeded from allowlist: \(allowTier)")
+                    #endif
+                } else {
+                    #if DEBUG
+                    print("Seeder: allowlist doc missing or no tier for \(emailLower)")
+                    #endif
+                }
             } catch {
                 #if DEBUG
-                print("Seeder: pro promotion rejected by rules (expected for non-allowlisted)")
+                print("Seeder: tier sync skipped/failed (likely not on allowlist): \(error.localizedDescription)")
                 #endif
             }
         } catch {

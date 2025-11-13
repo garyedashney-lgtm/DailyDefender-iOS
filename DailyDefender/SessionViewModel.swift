@@ -2,12 +2,19 @@ import Foundation
 import FirebaseAuth
 import FirebaseFirestore
 
+enum UserTier {
+    case free
+    case amateur
+    case pro
+}
+
 @MainActor
 final class SessionViewModel: ObservableObject {
     typealias AuthUser = FirebaseAuth.User
 
     @Published var user: AuthUser?
-    @Published var isPro: Bool = false
+    @Published var isPro: Bool = false          // legacy flag, derived from `tier`
+    @Published var tier: UserTier = .free       // 3-level entitlements
     @Published var errorMessage: String?
 
     private var userListener: ListenerRegistration?
@@ -26,25 +33,28 @@ final class SessionViewModel: ObservableObject {
                 // Update current user
                 self.user = user
 
-                // Tear down previous pro listener
+                // Tear down previous listener
                 self.userListener?.remove()
                 self.userListener = nil
 
                 if let uid = user?.uid {
-                    // Live listen to pro flips
+                    // Live listen to entitlement flips (tier + legacy pro)
                     self.userListener = self.db.collection("users").document(uid)
                         .addSnapshotListener { [weak self] snap, _ in
                             guard let self else { return }
-                            if let data = snap?.data() {
-                                self.isPro = (data["pro"] as? Bool) == true
+                            guard let data = snap?.data() else {
+                                self.applyEntitlementsFromData(nil)
+                                return
                             }
+                            self.applyEntitlementsFromData(data)
                         }
 
                     // Seed then refresh entitlements
                     await self.runSeedIfNeeded()
                     await self.refreshEntitlements()
                 } else {
-                    self.isPro = false
+                    // Signed out → reset entitlements
+                    self.applyEntitlementsFromData(nil)
                 }
             }
         }
@@ -52,6 +62,50 @@ final class SessionViewModel: ObservableObject {
 
     deinit {
         userListener?.remove()
+    }
+
+    // MARK: - Entitlement resolution
+
+    /// Central place to map Firestore fields -> UserTier + isPro
+    private func applyEntitlementsFromData(_ data: [String: Any]?) {
+        let anyTier  = data?["tier"]
+        let rawTier  = anyTier as? String
+        let tierText = rawTier?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let legacyPro = (data?["pro"] as? Bool) == true
+
+        #if DEBUG
+        print("Entitlements: raw tier=\(rawTier ?? "nil"), normalized=\(tierText ?? "nil"), hasTier=\(anyTier != nil), legacyPro=\(legacyPro)")
+        #endif
+
+        let resolvedTier: UserTier
+
+        if anyTier != nil {
+            // 🔴 IMPORTANT:
+            // If *any* tier is present:
+            // - "pro"  -> Pro
+            // - anything else (including "amateur", typos, or weird strings) -> Amateur
+            switch tierText {
+            case "pro":
+                resolvedTier = .pro
+            default:
+                resolvedTier = .amateur
+            }
+        } else {
+            // No tier field at all:
+            // - If legacy pro is true -> Pro
+            // - Otherwise -> Free
+            if legacyPro {
+                resolvedTier = .pro
+            } else {
+                resolvedTier = .free
+            }
+        }
+
+        self.tier = resolvedTier
+        self.isPro = (resolvedTier == .pro)
     }
 
     // MARK: - Auth
@@ -79,12 +133,19 @@ final class SessionViewModel: ObservableObject {
     // MARK: - Entitlements
 
     func refreshEntitlements() async {
-        guard let uid = user?.uid else { isPro = false; return }
+        guard let uid = user?.uid else {
+            applyEntitlementsFromData(nil)
+            return
+        }
         do {
             let snap = try await db.collection("users").document(uid).getDocument()
-            isPro = (snap.data()?["pro"] as? Bool) == true
+            if let data = snap.data() {
+                applyEntitlementsFromData(data)
+            } else {
+                applyEntitlementsFromData(nil)
+            }
         } catch {
-            isPro = false
+            applyEntitlementsFromData(nil)
         }
     }
 

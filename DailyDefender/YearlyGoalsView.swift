@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit   // ← for UIActivityViewController
 
 // MARK: - Model (same row model as Monthly)
 fileprivate struct GoalEntry: Identifiable, Equatable {
@@ -63,7 +64,7 @@ struct YearlyGoalsView: View {
                     // === Goals card ===
                     goalsCard
 
-                    // === Controls (Edit / Save) ===
+                    // === Controls (Share + Edit / Save) ===
                     controlsRow
 
                     Spacer(minLength: 8)
@@ -309,8 +310,24 @@ struct YearlyGoalsView: View {
     }
 
     private var controlsRow: some View {
-        HStack {
+        HStack(spacing: 12) {
+            // Share button (always available)
+            Button {
+                shareYearlyGoals()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.arrow.up")
+                    Text("Share")
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .frame(width: 120)
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
+
             Spacer()
+
             if isEditing {
                 Button {
                     // Fold trailing field, persist, exit edit mode
@@ -319,16 +336,17 @@ struct YearlyGoalsView: View {
                         goals.append(GoalEntry(id: nextIdAndBump(), text: t, done: false))
                         newGoalText = ""
                     }
-                    persistNow()
+                    persistNow(includeTrailingNew: false)
                     isEditing = false
                     dismissKeyboard()
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.down.fill")
                         Text("Save")
                     }
-                    .padding(.vertical, 10)
-                    .frame(width: 160)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .frame(width: 120)   // ← smaller than before (was 160)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.appGreen)
@@ -342,12 +360,13 @@ struct YearlyGoalsView: View {
                         focusedRow = goals.first?.id
                     }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Image(systemName: "pencil")
                         Text("Edit")
                     }
-                    .padding(.vertical, 10)
-                    .frame(width: 160)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .frame(width: 120)   // ← smaller than before (was 160)
                 }
                 .buttonStyle(.bordered)
                 .tint(.white)
@@ -406,5 +425,42 @@ struct YearlyGoalsView: View {
         persistNow(includeTrailingNew: true)
         currentYear += years
         seedFromStorage()
+    }
+
+    private func shareYearlyGoals() {
+        // Build nice share text
+        let header = "Yearly Goals – \(currentYear)\n"
+        if goals.isEmpty {
+            let text = header + "\n(No goals recorded yet.)"
+            presentShareSheet(text: text)
+            return
+        }
+
+        let lines: [String] = goals.compactMap { g in
+            let trimmed = g.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            let box = g.done ? "[x]" : "[ ]"
+            return "\(box) \(trimmed)"
+        }
+
+        let body = lines.joined(separator: "\n")
+        let text = header + "\n" + body
+        presentShareSheet(text: text)
+    }
+
+    private func presentShareSheet(text: String) {
+        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        UIApplication.shared.firstKeyWindow?.rootViewController?.present(av, animated: true)
+    }
+}
+
+// MARK: - Helpers
+
+private extension UIApplication {
+    var firstKeyWindow: UIWindow? {
+        connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
     }
 }

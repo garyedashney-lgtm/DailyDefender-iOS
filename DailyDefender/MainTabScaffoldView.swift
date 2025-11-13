@@ -6,60 +6,57 @@ struct MainTabScaffoldView: View {
 
     @State private var currentPage: IosPage = .daily
 
-    // Version labels for footer
     private var versionName: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0"
     }
     private var versionCode: String {
         (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "1"
     }
-    // ISO week key (matches Android “YYYY-Www” vibe)
     private var weekKey: String {
         let cal = Calendar(identifier: .gregorian)
         let comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: Date())
-        let y = comps.yearForWeekOfYear ?? 0
-        let w = comps.weekOfYear ?? 0
-        return "W\(w)-\(y)"
+        return "W\(comps.weekOfYear ?? 0)-\(comps.yearForWeekOfYear ?? 0)"
     }
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Switch among your 5 top-level pages.
-            // These views already include their own NavigationStack/toolbars.
             Group {
                 switch currentPage {
+
                 case .daily:
                     DailyView()
                         .environmentObject(store)
-                        .accessibilityIdentifier("tab_daily")
 
                 case .weekly:
-                    WeeklyView()
-                        .environmentObject(store)
-                        .accessibilityIdentifier("tab_weekly")
+                    if session.tier.canAccessWeeklyAndGoals {
+                        WeeklyView().environmentObject(store)
+                    } else {
+                        PaywallCardView(title: "Pro Feature")
+                    }
 
                 case .goals:
-                    GoalsView()
-                        .environmentObject(store)
-                        .accessibilityIdentifier("tab_goals")
+                    if session.tier.canAccessWeeklyAndGoals {
+                        GoalsView().environmentObject(store)
+                    } else {
+                        PaywallCardView(title: "Pro Feature")
+                    }
 
                 case .journal:
-                    JournalHomeView()
-                        .environmentObject(store)
-                        .accessibilityIdentifier("tab_journal")
+                    if session.tier.canAccessJournal {
+                        JournalHomeView().environmentObject(store)
+                    } else {
+                        PaywallCardView(title: "Pro Feature")
+                    }
 
                 case .more:
-                    MoreView()
-                        .environmentObject(store)
-                        .accessibilityIdentifier("tab_more")
+                    MoreView().environmentObject(store)
                 }
             }
-            .ignoresSafeArea(.keyboard) // footer stays put when keyboard shows
+            .ignoresSafeArea(.keyboard)
 
-            // Global footer
             IOSFooterBar(
                 currentPage: currentPage,
-                onSelectPage: { page in currentPage = page },
+                onSelectPage: { currentPage = $0 },
                 versionName: versionName,
                 versionCode: versionCode,
                 weekKey: weekKey
@@ -69,3 +66,15 @@ struct MainTabScaffoldView: View {
     }
 }
 
+extension UserTier {
+    var canAccessWeeklyAndGoals: Bool {
+        switch self {
+        case .free: return false
+        case .amateur, .pro: return true
+        }
+    }
+
+    var canAccessJournal: Bool {
+        self == .pro
+    }
+}

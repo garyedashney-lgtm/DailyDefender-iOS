@@ -77,288 +77,286 @@ struct WeeklyView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: w)
     }
 
+    // MARK: - Body
+
     var body: some View {
-        if !session.isPro {
-            PaywallCardView(title: "Pro Feature")
-        } else {
-            NavigationStack {
-                ScrollViewReader { proxy in
-                    ZStack {
-                        AppTheme.navy900.ignoresSafeArea()
+        NavigationStack {
+            ScrollViewReader { proxy in
+                ZStack {
+                    AppTheme.navy900.ignoresSafeArea()
 
-                        List {
-                            // === Progress strip ===
-                            Section {
-                                VStack(spacing: 8) {
-                                    ProgressView(value: weeklyProgress)
-                                        .tint(AppTheme.appGreen)
-                                    Text("\(displayCoreTotal) / \(weeklyTotalCap) completed this week")
-                                        .frame(maxWidth: .infinity)
-                                        .multilineTextAlignment(.center)
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(AppTheme.textPrimary)
-                                }
-                                .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
-                            }
-                            .listRowBackground(AppTheme.surface)
-
-                            // === Wins / Losses ===
-                            weeklySection(
-                                anchorId: "wins",
-                                title: "Wins / Losses",
-                                countText: nil,
-                                subtitle: "",
-                                text: $winsLosses,
-                                placeholder: "type your notes here…",
-                                onFocus: { focused in
-                                    anyEditorFocused = focused
-                                    if focused { scrollTo("wins", proxy: proxy) }
-                                }
-                            )
-
-                            // === Physiology ===
-                            weeklySection(
-                                anchorId: "phys",
-                                title: "Physiology",
-                                countText: "\(physCount)/\(perPillarCap)",
-                                subtitle: "   The body is the universal address of your existence",
-                                text: $phys,
-                                placeholder: "type your notes here…",
-                                onFocus: { f in
-                                    anyEditorFocused = f
-                                    if f { scrollTo("phys", proxy: proxy) }
-                                }
-                            )
-
-                            // === Piety ===
-                            weeklySection(
-                                anchorId: "piety",
-                                title: "Piety",
-                                countText: "\(pietyCount)/\(perPillarCap)",
-                                subtitle: "   Using mystery & awe as the spirit speaks for the soul",
-                                text: $prayer,
-                                placeholder: "type your notes here…",
-                                onFocus: { f in
-                                    anyEditorFocused = f
-                                    if f { scrollTo("piety", proxy: proxy) }
-                                }
-                            )
-
-                            // === People ===
-                            weeklySection(
-                                anchorId: "people",
-                                title: "People",
-                                countText: "\(peopleCount)/\(perPillarCap)",
-                                subtitle: "   Team Human: herd animals who exist in each other",
-                                text: $people,
-                                placeholder: "type your notes here…",
-                                onFocus: { f in
-                                    anyEditorFocused = f
-                                    if f { scrollTo("people", proxy: proxy) }
-                                }
-                            )
-
-                            // === Production ===
-                            weeklySection(
-                                anchorId: "prod",
-                                title: "Production",
-                                countText: "\(prodCount)/\(perPillarCap)",
-                                subtitle: "   A man produces more than he consumes",
-                                text: $production,
-                                placeholder: "type your notes here…",
-                                onFocus: { f in
-                                    anyEditorFocused = f
-                                    if f { scrollTo("prod", proxy: proxy) }
-                                }
-                            )
-
-                            // === 🎯 Carryover Done? ===
-                            weeklyCarryoverSection(
-                                anchorId: "carry",
-                                leadingEmoji: "🎯",
-                                title: "This Week’s One Thing Done?",
-                                text: $carryText,
-                                isDone: $carryDone,
-                                placeholder: "— none set last week —",
-                                onFocus: { f in
-                                    anyEditorFocused = f
-                                    if f { scrollTo("carry", proxy: proxy) }
-                                }
-                            )
-
-                            // === 🎯 One Thing Next Week ===
-                            weeklySimpleSection(
-                                anchorId: "next",
-                                leadingEmoji: "🎯",
-                                title: "One Thing for Next Week",
-                                subtitle: "",
-                                text: $oneThingNextWeek,
-                                placeholder: "type your notes here…",
-                                onFocus: { f in
-                                    anyEditorFocused = f
-                                    if f { scrollTo("next", proxy: proxy) }
-                                }
-                            )
-
-                            // === 📓 Extra Notes ===
-                            weeklySimpleSection(
-                                anchorId: "notes",
-                                leadingEmoji: "📓",
-                                title: "Extra Notes",
-                                subtitle: "",
-                                text: $journalNotes,
-                                placeholder: "type your extra notes here…",
-                                onFocus: { f in
-                                    anyEditorFocused = f
-                                    if f { scrollTo("notes", proxy: proxy) }
-                                }
-                            )
-
-                            // === Clear / Share row ===
-                            Section {
-                                HStack(spacing: 12) {
-                                    Button(action: { showClearAlert = true }) {
-                                        Text("Clear All")
-                                            .foregroundStyle(AppTheme.textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .background(AppTheme.navy900)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
-                                    )
-
-                                    Spacer(minLength: 12)
-
-                                    Button(action: shareWeeklySummary) {
-                                        Text("Share")
-                                            .foregroundStyle(AppTheme.textPrimary)
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 10)
-                                    }
-                                    .buttonStyle(.plain)
-                                    .background(AppTheme.navy900)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                            .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
-                                    )
-                                }
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                            }
-                            .listRowSeparator(.hidden)
-                            .listRowBackground(AppTheme.navy900)
-
-                            // Bottom spacer so the last section isn't cramped
-                            Section { Color.clear.frame(height: 56) }
-                                .listRowSeparator(.hidden)
-                                .listRowBackground(AppTheme.navy900)
-                        }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                        .scrollDismissesKeyboard(.interactively)
-                        .modifier(CompactListTweaks())
-                    }
-                    .withKeyboardDismiss()
-                    // Fixed headroom when an editor is focused (no keyboard math)
-                    .safeAreaInset(edge: .bottom) {
-                        Color.clear.frame(height: anyEditorFocused ? 96 : 48)
-                    }
-                }
-
-                // Toolbar
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(action: { showShield = true }) {
-                            Image("four_ps")
-                                .resizable().scaledToFit()
-                                .frame(width: 36, height: 36)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                                .padding(4)
-                                .offset(y: -2)
-                        }
-                        .accessibilityLabel("Open 4 Ps Shield")
-                    }
-                    ToolbarItem(placement: .principal) {
-                        VStack(spacing: 2) {
-                            HStack(spacing: 8) {
-                                Text("📅")
-                                Text("Weekly Check-In")
-                                    .font(.headline.weight(.bold))
+                    List {
+                        // === Progress strip ===
+                        Section {
+                            VStack(spacing: 8) {
+                                ProgressView(value: weeklyProgress)
+                                    .tint(AppTheme.appGreen)
+                                Text("\(displayCoreTotal) / \(weeklyTotalCap) completed this week")
+                                    .frame(maxWidth: .infinity)
+                                    .multilineTextAlignment(.center)
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(AppTheme.textPrimary)
                             }
-                            Text("Week: \(weekKey)")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.textPrimary)
-                                .padding(.bottom, 6)
+                            .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
                         }
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Group {
-                            if let path = store.profile.photoPath,
-                               let ui = UIImage(contentsOfFile: path) {
-                                Image(uiImage: ui).resizable().scaledToFill()
-                            } else if UIImage(named: "ATMPic") != nil {
-                                Image("ATMPic").resizable().scaledToFill()
-                            } else {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, AppTheme.appGreen)
+                        .listRowBackground(AppTheme.surface)
+
+                        // === Wins / Losses ===
+                        weeklySection(
+                            anchorId: "wins",
+                            title: "Wins / Losses",
+                            countText: nil,
+                            subtitle: "",
+                            text: $winsLosses,
+                            placeholder: "type your notes here…",
+                            onFocus: { focused in
+                                anyEditorFocused = focused
+                                if focused { scrollTo("wins", proxy: proxy) }
                             }
+                        )
+
+                        // === Physiology ===
+                        weeklySection(
+                            anchorId: "phys",
+                            title: "Physiology",
+                            countText: "\(physCount)/\(perPillarCap)",
+                            subtitle: "   The body is the universal address of your existence",
+                            text: $phys,
+                            placeholder: "type your notes here…",
+                            onFocus: { f in
+                                anyEditorFocused = f
+                                if f { scrollTo("phys", proxy: proxy) }
+                            }
+                        )
+
+                        // === Piety ===
+                        weeklySection(
+                            anchorId: "piety",
+                            title: "Piety",
+                            countText: "\(pietyCount)/\(perPillarCap)",
+                            subtitle: "   Using mystery & awe as the spirit speaks for the soul",
+                            text: $prayer,
+                            placeholder: "type your notes here…",
+                            onFocus: { f in
+                                anyEditorFocused = f
+                                if f { scrollTo("piety", proxy: proxy) }
+                            }
+                        )
+
+                        // === People ===
+                        weeklySection(
+                            anchorId: "people",
+                            title: "People",
+                            countText: "\(peopleCount)/\(perPillarCap)",
+                            subtitle: "   Team Human: herd animals who exist in each other",
+                            text: $people,
+                            placeholder: "type your notes here…",
+                            onFocus: { f in
+                                anyEditorFocused = f
+                                if f { scrollTo("people", proxy: proxy) }
+                            }
+                        )
+
+                        // === Production ===
+                        weeklySection(
+                            anchorId: "prod",
+                            title: "Production",
+                            countText: "\(prodCount)/\(perPillarCap)",
+                            subtitle: "   A man produces more than he consumes",
+                            text: $production,
+                            placeholder: "type your notes here…",
+                            onFocus: { f in
+                                anyEditorFocused = f
+                                if f { scrollTo("prod", proxy: proxy) }
+                            }
+                        )
+
+                        // === 🎯 Carryover Done? ===
+                        weeklyCarryoverSection(
+                            anchorId: "carry",
+                            leadingEmoji: "🎯",
+                            title: "This Week’s One Thing Done?",
+                            text: $carryText,
+                            isDone: $carryDone,
+                            placeholder: "— none set last week —",
+                            onFocus: { f in
+                                anyEditorFocused = f
+                                if f { scrollTo("carry", proxy: proxy) }
+                            }
+                        )
+
+                        // === 🎯 One Thing Next Week ===
+                        weeklySimpleSection(
+                            anchorId: "next",
+                            leadingEmoji: "🎯",
+                            title: "One Thing for Next Week",
+                            subtitle: "",
+                            text: $oneThingNextWeek,
+                            placeholder: "type your notes here…",
+                            onFocus: { f in
+                                anyEditorFocused = f
+                                if f { scrollTo("next", proxy: proxy) }
+                            }
+                        )
+
+                        // === 📓 Extra Notes ===
+                        weeklySimpleSection(
+                            anchorId: "notes",
+                            leadingEmoji: "📓",
+                            title: "Extra Notes",
+                            subtitle: "",
+                            text: $journalNotes,
+                            placeholder: "type your extra notes here…",
+                            onFocus: { f in
+                                anyEditorFocused = f
+                                if f { scrollTo("notes", proxy: proxy) }
+                            }
+                        )
+
+                        // === Clear / Share row ===
+                        Section {
+                            HStack(spacing: 12) {
+                                Button(action: { showClearAlert = true }) {
+                                    Text("Clear All")
+                                        .foregroundStyle(AppTheme.textPrimary)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                }
+                                .buttonStyle(.plain)
+                                .background(AppTheme.navy900)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
+                                )
+
+                                Spacer(minLength: 12)
+
+                                Button(action: shareWeeklySummary) {
+                                    Text("Share")
+                                        .foregroundStyle(AppTheme.textPrimary)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                }
+                                .buttonStyle(.plain)
+                                .background(AppTheme.navy900)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
+                                )
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
                         }
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .offset(y: -2)
-                        .onTapGesture { goProfileEdit = true }
-                        .accessibilityLabel("Profile")
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(AppTheme.navy900)
+
+                        // Bottom spacer so the last section isn't cramped
+                        Section { Color.clear.frame(height: 56) }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(AppTheme.navy900)
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                    .modifier(CompactListTweaks())
                 }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(AppTheme.navy900, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
-
-                // Shield
-                .fullScreenCover(isPresented: $showShield) { ShieldPage(imageName: "four_ps") }
-
-                // Hydrate + save
-                .task {
-                    if !didHydrateOnce {
-                        hydrateFromStorage()
-                        didHydrateOnce = true
-                    }
+                .withKeyboardDismiss()
+                // Fixed headroom when an editor is focused (no keyboard math)
+                .safeAreaInset(edge: .bottom) {
+                    Color.clear.frame(height: anyEditorFocused ? 96 : 48)
                 }
-                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
-                    flushAll()
-                }
-                .alert("Clear all weekly notes?", isPresented: $showClearAlert) {
-                    Button("Clear All", role: .destructive) { clearAll() }
-                    Button("Cancel", role: .cancel) { }
-                } message: {
-                    Text("This will remove all text in Weekly for week \(weekKey).")
-                }
-
-                // Debounced persistence on change
-                .onChange(of: winsLosses)       { _ in scheduleSave() }
-                .onChange(of: phys)             { _ in scheduleSave() }
-                .onChange(of: prayer)           { _ in scheduleSave() }
-                .onChange(of: people)           { _ in scheduleSave() }
-                .onChange(of: production)       { _ in scheduleSave() }
-                .onChange(of: carryText)        { _ in scheduleSave() }
-                .onChange(of: carryDone)        { _ in scheduleSave() }
-                .onChange(of: oneThingNextWeek) { _ in scheduleSave() }
-                .onChange(of: journalNotes)     { _ in scheduleSave() }
-
-                NavigationLink("", isActive: $goProfileEdit) {
-                    ProfileEditView()
-                        .environmentObject(store)
-                        .environmentObject(session)
-                }.hidden()
             }
+
+            // Toolbar
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { showShield = true }) {
+                        Image("four_ps")
+                            .resizable().scaledToFit()
+                            .frame(width: 36, height: 36)
+                            .clipShape(Circle())
+                            .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                            .padding(4)
+                            .offset(y: -2)
+                    }
+                    .accessibilityLabel("Open 4 Ps Shield")
+                }
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 2) {
+                        HStack(spacing: 8) {
+                            Text("📅")
+                            Text("Weekly Check-In")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(AppTheme.textPrimary)
+                        }
+                        Text("Week: \(weekKey)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .padding(.bottom, 6)
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Group {
+                        if let path = store.profile.photoPath,
+                           let ui = UIImage(contentsOfFile: path) {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                        } else if UIImage(named: "ATMPic") != nil {
+                            Image("ATMPic").resizable().scaledToFill()
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, AppTheme.appGreen)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .offset(y: -2)
+                    .onTapGesture { goProfileEdit = true }
+                    .accessibilityLabel("Profile")
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.navy900, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+
+            // Shield
+            .fullScreenCover(isPresented: $showShield) { ShieldPage(imageName: "four_ps") }
+
+            // Hydrate + save
+            .task {
+                if !didHydrateOnce {
+                    hydrateFromStorage()
+                    didHydrateOnce = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+                flushAll()
+            }
+            .alert("Clear all weekly notes?", isPresented: $showClearAlert) {
+                Button("Clear All", role: .destructive) { clearAll() }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("This will remove all text in Weekly for week \(weekKey).")
+            }
+
+            // Debounced persistence on change
+            .onChange(of: winsLosses)       { _ in scheduleSave() }
+            .onChange(of: phys)             { _ in scheduleSave() }
+            .onChange(of: prayer)           { _ in scheduleSave() }
+            .onChange(of: people)           { _ in scheduleSave() }
+            .onChange(of: production)       { _ in scheduleSave() }
+            .onChange(of: carryText)        { _ in scheduleSave() }
+            .onChange(of: carryDone)        { _ in scheduleSave() }
+            .onChange(of: oneThingNextWeek) { _ in scheduleSave() }
+            .onChange(of: journalNotes)     { _ in scheduleSave() }
+
+            NavigationLink("", isActive: $goProfileEdit) {
+                ProfileEditView()
+                    .environmentObject(store)
+                    .environmentObject(session)
+            }.hidden()
         }
     }
 

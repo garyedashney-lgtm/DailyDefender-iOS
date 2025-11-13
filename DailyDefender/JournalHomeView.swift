@@ -3,7 +3,6 @@ import SwiftUI
 struct JournalHomeView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var store: HabitStore
-    @EnvironmentObject var session: SessionViewModel
     @ObservedObject private var journalStore = JournalMemoryStore.shared   // JSON-on-disk persistence
 
     // Header actions
@@ -39,345 +38,341 @@ struct JournalHomeView: View {
     private let journalShieldAsset = "AppShieldSquare"
 
     var body: some View {
-        if !session.isPro {
-            PaywallCardView(title: "Pro Feature")
-        } else {
-            NavigationStack(path: $path) {
-                ZStack {
-                    AppTheme.navy900.ignoresSafeArea()
+        NavigationStack(path: $path) {
+            ZStack {
+                AppTheme.navy900.ignoresSafeArea()
 
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            // --- Section: New Journal ---
-                            SectionHeaderCustom(title: "New Journal", emoji: "📒")
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        // --- Section: New Journal ---
+                        SectionHeaderCustom(title: "New Journal", emoji: "📒")
 
-                            JournalCardRow(title: "Free Flow", subtitle: "– Talk!", emoji: "📓") {
-                                path.append(.freeFlowNew)
-                                onFreeFlow()
-                            }
-
-                            JournalCardRow(title: "Gratitude", subtitle: "– Thanks!", emoji: "🙏") {
-                                path.append(.gratitudeNew)
-                                onGratitude()
-                            }
-
-                            JournalCardRow(title: "3 Blessings", subtitle: "– Tally!", emoji: "✨") {
-                                path.append(.blessingTallyNew)
-                                onBlessingTally()
-                            }
-
-                            JournalCardRow(title: "Cage The Wolf", subtitle: "– Tempted?", emoji: "🐺") {
-                                path.append(.ctwNew)
-                                onCageTheWolf()
-                            }
-
-                            JournalCardRow(title: "10R Process", subtitle: "– Triggered?", emoji: "📝") {
-                                path.append(.tenRNew)
-                                onTenR()
-                            }
-
-                            JournalCardRow(title: "Self Care Writing", subtitle: "– Traumatized?", emoji: "🪞") {
-                                path.append(.scwNew)
-                                onSelfCareWriting()
-                            }
-
-                            // --- Section: Journal Library ---
-                            SectionHeaderCustom(title: "Journal Library", emoji: "📚")
-
-                            JournalCardRow(title: "Journal Library Search", emoji: "🔍") {
-                                path.append(.search)
-                                onSearch()
-                            }
-
-                            HStack(spacing: 8) {
-                                Image(systemName: "checkmark.icloud")
-                                    .foregroundStyle(AppTheme.appGreen)
-                                    .font(.system(size: 14, weight: .semibold))
-                                Text("Your journals are saved on this device and included in iCloud backups.")
-                                    .font(.footnote)
-                                    .foregroundStyle(AppTheme.textSecondary)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 6)
-
-                            Spacer(minLength: 56)
+                        JournalCardRow(title: "Free Flow", subtitle: "– Talk!", emoji: "📓") {
+                            path.append(.freeFlowNew)
+                            onFreeFlow()
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
+
+                        JournalCardRow(title: "Gratitude", subtitle: "– Thanks!", emoji: "🙏") {
+                            path.append(.gratitudeNew)
+                            onGratitude()
+                        }
+
+                        JournalCardRow(title: "3 Blessings", subtitle: "– Tally!", emoji: "✨") {
+                            path.append(.blessingTallyNew)
+                            onBlessingTally()
+                        }
+
+                        JournalCardRow(title: "Cage The Wolf", subtitle: "– Tempted?", emoji: "🐺") {
+                            path.append(.ctwNew)
+                            onCageTheWolf()
+                        }
+
+                        JournalCardRow(title: "10R Process", subtitle: "– Triggered?", emoji: "📝") {
+                            path.append(.tenRNew)
+                            onTenR()
+                        }
+
+                        JournalCardRow(title: "Self Care Writing", subtitle: "– Traumatized?", emoji: "🪞") {
+                            path.append(.scwNew)
+                            onSelfCareWriting()
+                        }
+
+                        // --- Section: Journal Library ---
+                        SectionHeaderCustom(title: "Journal Library", emoji: "📚")
+
+                        JournalCardRow(title: "Journal Library Search", emoji: "🔍") {
+                            path.append(.search)
+                            onSearch()
+                        }
+
+                        HStack(spacing: 8) {
+                            Image(systemName: "checkmark.icloud")
+                                .foregroundStyle(AppTheme.appGreen)
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Your journals are saved on this device and included in iCloud backups.")
+                                .font(.footnote)
+                                .foregroundStyle(AppTheme.textSecondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 6)
+
+                        Spacer(minLength: 56)
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
                 }
-                // === Toolbar/Header ===
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button(action: { showJournalShield = true }) {
-                            (UIImage(named: journalShieldAsset) != nil
-                             ? Image(journalShieldAsset).resizable().scaledToFit()
-                             : Image("AppShieldSquare").resizable().scaledToFit())
-                            .frame(width: 36, height: 36)
-                            .clipShape(Circle())
-                            .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                            .padding(4)
-                            .offset(y: -2)
-                        }
-                        .accessibilityLabel("Open Journal shield")
-                    }
-
-                    ToolbarItem(placement: .principal) {
-                        VStack(spacing: 6) {
-                            Text("Journal")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(AppTheme.textPrimary)
-                        }
-                        .padding(.bottom, 10)
-                    }
-
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Group {
-                            if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
-                                Image(uiImage: ui).resizable().scaledToFill()
-                            } else if UIImage(named: "ATMPic") != nil {
-                                Image("ATMPic").resizable().scaledToFill()
-                            } else {
-                                Image(systemName: "person.crop.circle.fill")
-                                    .symbolRenderingMode(.palette)
-                                    .foregroundStyle(.white, AppTheme.appGreen)
-                            }
-                        }
-                        .frame(width: 32, height: 32)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            // === Toolbar/Header ===
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: { showJournalShield = true }) {
+                        (UIImage(named: journalShieldAsset) != nil
+                         ? Image(journalShieldAsset).resizable().scaledToFit()
+                         : Image("AppShieldSquare").resizable().scaledToFit())
+                        .frame(width: 36, height: 36)
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                        .padding(4)
                         .offset(y: -2)
-                        .onTapGesture { showProfileEdit = true }
-                        .accessibilityLabel("Profile")
                     }
-                }
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbarBackground(AppTheme.navy900, for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-                .toolbarColorScheme(.dark, for: .navigationBar)
-                .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
-
-                // Footer tap back
-                .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
-                    path = []
+                    .accessibilityLabel("Open Journal shield")
                 }
 
-                .fullScreenCover(isPresented: $showJournalShield) {
-                    ShieldPage(imageName: journalShieldAsset)
-                }
-
-                .sheet(isPresented: $showProfileEdit) {
-                    ProfileEditView().environmentObject(store)
-                }
-
-                // === Destinations ===
-                .navigationDestination(for: JournalRoute.self) { route in
-                    switch route {
-
-                    // --- Free Flow ---
-                    case .freeFlowNew:
-                        FreeFlowEditorView(
-                            initialTitle: "", initialBody: "",
-                            initialCreatedAt: Date(), initialUpdatedAt: nil,
-                            isEditingExisting: false,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {}
-                        ).environmentObject(store)
-
-                    case .freeFlowExisting(let entry):
-                        FreeFlowEditorView(
-                            initialTitle: entry.title,
-                            initialBody: entry.content,
-                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
-                            initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
-                            isEditingExisting: true,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {
-                                JournalMemoryStore.shared.delete(ids: [entry.id])
-                                dismiss()
-                            }
-                        ).environmentObject(store)
-
-                    // --- 3 Blessings ---
-                    case .blessingTallyNew:
-                        BlessingTallyEditorView(
-                            initialTitle: "3 Blessings",
-                            initialCreatedAt: Date(),
-                            initialAnswers: ("", "", ""),
-                            isEditingExisting: false,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {}
-                        ).environmentObject(store)
-
-                    case .blessingTallyExisting(let entry):
-                        BlessingTallyEditorView(
-                            initialTitle: entry.title.isEmpty ? "3 Blessings" : entry.title,
-                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
-                            initialAnswers: answersTuple(from: entry.content),
-                            isEditingExisting: true,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {
-                                JournalMemoryStore.shared.delete(ids: [entry.id])
-                                dismiss()
-                            }
-                        ).environmentObject(store)
-
-                    // --- Gratitude ---
-                    case .gratitudeNew:
-                        GratitudeEditorView(
-                            initialTitle: "Gratitude",
-                            initialBody: "",
-                            initialCreatedAt: Date(),
-                            initialUpdatedAt: Date(),
-                            isEditingExisting: false,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {}
-                        ).environmentObject(store)
-
-                    // --- Cage the Wolf ---
-                    case .ctwNew:
-                        CageTheWolfEditorView(
-                            initialTitle: "Cage The Wolf",
-                            initialCreatedAt: Date(),
-                            initialAnswers: Array(repeating: "", count: Ctw.inputCount),
-                            isEditingExisting: false,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {}
-                        ).environmentObject(store)
-
-                    case .ctwExisting(let entry):
-                        let parsed = parseCtwBody(entry.content)
-                        let answers = Array(parsed.prefix(Ctw.inputCount))
-                        CageTheWolfEditorView(
-                            initialTitle: entry.title.isEmpty ? "Cage The Wolf" : entry.title,
-                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
-                            initialAnswers: answers,
-                            isEditingExisting: true,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {
-                                JournalMemoryStore.shared.delete(ids: [entry.id])
-                                dismiss()
-                            }
-                        ).environmentObject(store)
-
-                    // --- 10R Process ---
-                    case .tenRNew:
-                        TenREditorView(
-                            initialTitle: "10R Process",
-                            initialCreatedAt: Date(),
-                            initialAnswers: Array(repeating: "", count: TenR.inputCount),
-                            isEditingExisting: false,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {}
-                        ).environmentObject(store)
-
-                    case .tenRExisting(let entry):
-                        let parsed = parseTenRBody(entry.content)
-                        let answers = Array(parsed.prefix(TenR.inputCount))
-                        TenREditorView(
-                            initialTitle: entry.title.isEmpty ? "10R Process" : entry.title,
-                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
-                            initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
-                            initialAnswers: answers,
-                            isEditingExisting: true,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {
-                                JournalMemoryStore.shared.delete(ids: [entry.id])
-                                dismiss()
-                            }
-                        ).environmentObject(store)
-
-                    // --- Self Care Writing ---
-                    case .scwNew:
-                        ScwEditorView(
-                            initialTitle: "Self Care Writing",
-                            initialCreatedAt: Date(),
-                            initialAnswers: Array(repeating: "", count: Scw.inputCount),
-                            isEditingExisting: false,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {}
-                        ).environmentObject(store)
-
-                    case .scwExisting(let entry):
-                        let parsed = parseScwBody(entry.content)
-                        let answers = Array(parsed.prefix(Scw.inputCount))
-                        ScwEditorView(
-                            initialTitle: entry.title.isEmpty ? "Self Care Writing" : entry.title,
-                            initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
-                            initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
-                            initialAnswers: answers,
-                            isEditingExisting: true,
-                            onBack: { dismiss() },
-                            onSave: { title, body, created in
-                                JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
-                                dismiss()
-                            },
-                            onDelete: {
-                                JournalMemoryStore.shared.delete(ids: [entry.id])
-                                dismiss()
-                            }
-                        ).environmentObject(store)
-
-                    // --- Search ---
-                    case .search:
-                        JournalLibrarySearchView(
-                            allEntries: journalStore.entries,
-                            onOpen: { tapped in
-                                if looksLikeCtwLocal(tapped.content) {
-                                    path.append(.ctwExisting(tapped))
-                                } else if looksLikeBlessingTallyLocal(tapped.content) {
-                                    path.append(.blessingTallyExisting(tapped))
-                                } else if looksLikeTenRLocal(tapped.title, tapped.content) {
-                                    path.append(.tenRExisting(tapped))
-                                } else if looksLikeScwLocalHome(tapped.content) {
-                                    path.append(.scwExisting(tapped))
-                                } else {
-                                    path.append(.freeFlowExisting(tapped))
-                                }
-                            },
-                            onDelete: { ids in JournalMemoryStore.shared.delete(ids: ids) }
-                        ).environmentObject(store)
+                ToolbarItem(placement: .principal) {
+                    VStack(spacing: 6) {
+                        Text("Journal")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(AppTheme.textPrimary)
                     }
+                    .padding(.bottom, 10)
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Group {
+                        if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
+                            Image(uiImage: ui).resizable().scaledToFill()
+                        } else if UIImage(named: "ATMPic") != nil {
+                            Image("ATMPic").resizable().scaledToFill()
+                        } else {
+                            Image(systemName: "person.crop.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, AppTheme.appGreen)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .offset(y: -2)
+                    .onTapGesture { showProfileEdit = true }
+                    .accessibilityLabel("Profile")
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(AppTheme.navy900, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
+
+            // Footer tap back
+            .onReceive(NotificationCenter.default.publisher(for: .JumpToJournalHome)) { _ in
+                path = []
+            }
+
+            .fullScreenCover(isPresented: $showJournalShield) {
+                ShieldPage(imageName: journalShieldAsset)
+            }
+
+            .sheet(isPresented: $showProfileEdit) {
+                ProfileEditView().environmentObject(store)
+            }
+
+            // === Destinations ===
+            .navigationDestination(for: JournalRoute.self) { route in
+                switch route {
+
+                // --- Free Flow ---
+                case .freeFlowNew:
+                    FreeFlowEditorView(
+                        initialTitle: "", initialBody: "",
+                        initialCreatedAt: Date(), initialUpdatedAt: nil,
+                        isEditingExisting: false,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {}
+                    ).environmentObject(store)
+
+                case .freeFlowExisting(let entry):
+                    FreeFlowEditorView(
+                        initialTitle: entry.title,
+                        initialBody: entry.content,
+                        initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                        initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
+                        isEditingExisting: true,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {
+                            JournalMemoryStore.shared.delete(ids: [entry.id])
+                            dismiss()
+                        }
+                    ).environmentObject(store)
+
+                // --- 3 Blessings ---
+                case .blessingTallyNew:
+                    BlessingTallyEditorView(
+                        initialTitle: "3 Blessings",
+                        initialCreatedAt: Date(),
+                        initialAnswers: ("", "", ""),
+                        isEditingExisting: false,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {}
+                    ).environmentObject(store)
+
+                case .blessingTallyExisting(let entry):
+                    BlessingTallyEditorView(
+                        initialTitle: entry.title.isEmpty ? "3 Blessings" : entry.title,
+                        initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                        initialAnswers: answersTuple(from: entry.content),
+                        isEditingExisting: true,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {
+                            JournalMemoryStore.shared.delete(ids: [entry.id])
+                            dismiss()
+                        }
+                    ).environmentObject(store)
+
+                // --- Gratitude ---
+                case .gratitudeNew:
+                    GratitudeEditorView(
+                        initialTitle: "Gratitude",
+                        initialBody: "",
+                        initialCreatedAt: Date(),
+                        initialUpdatedAt: Date(),
+                        isEditingExisting: false,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {}
+                    ).environmentObject(store)
+
+                // --- Cage the Wolf ---
+                case .ctwNew:
+                    CageTheWolfEditorView(
+                        initialTitle: "Cage The Wolf",
+                        initialCreatedAt: Date(),
+                        initialAnswers: Array(repeating: "", count: Ctw.inputCount),
+                        isEditingExisting: false,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {}
+                    ).environmentObject(store)
+
+                case .ctwExisting(let entry):
+                    let parsed = parseCtwBody(entry.content)
+                    let answers = Array(parsed.prefix(Ctw.inputCount))
+                    CageTheWolfEditorView(
+                        initialTitle: entry.title.isEmpty ? "Cage The Wolf" : entry.title,
+                        initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                        initialAnswers: answers,
+                        isEditingExisting: true,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {
+                            JournalMemoryStore.shared.delete(ids: [entry.id])
+                            dismiss()
+                        }
+                    ).environmentObject(store)
+
+                // --- 10R Process ---
+                case .tenRNew:
+                    TenREditorView(
+                        initialTitle: "10R Process",
+                        initialCreatedAt: Date(),
+                        initialAnswers: Array(repeating: "", count: TenR.inputCount),
+                        isEditingExisting: false,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {}
+                    ).environmentObject(store)
+
+                case .tenRExisting(let entry):
+                    let parsed = parseTenRBody(entry.content)
+                    let answers = Array(parsed.prefix(TenR.inputCount))
+                    TenREditorView(
+                        initialTitle: entry.title.isEmpty ? "10R Process" : entry.title,
+                        initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                        initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
+                        initialAnswers: answers,
+                        isEditingExisting: true,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {
+                            JournalMemoryStore.shared.delete(ids: [entry.id])
+                            dismiss()
+                        }
+                    ).environmentObject(store)
+
+                // --- Self Care Writing ---
+                case .scwNew:
+                    ScwEditorView(
+                        initialTitle: "Self Care Writing",
+                        initialCreatedAt: Date(),
+                        initialAnswers: Array(repeating: "", count: Scw.inputCount),
+                        isEditingExisting: false,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.addFreeFlow(title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {}
+                    ).environmentObject(store)
+
+                case .scwExisting(let entry):
+                    let parsed = parseScwBody(entry.content)
+                    let answers = Array(parsed.prefix(Scw.inputCount))
+                    ScwEditorView(
+                        initialTitle: entry.title.isEmpty ? "Self Care Writing" : entry.title,
+                        initialCreatedAt: Date(timeIntervalSince1970: TimeInterval(entry.dateMillis) / 1000),
+                        initialUpdatedAt: Date(timeIntervalSince1970: TimeInterval(entry.updatedAt) / 1000),
+                        initialAnswers: answers,
+                        isEditingExisting: true,
+                        onBack: { dismiss() },
+                        onSave: { title, body, created in
+                            JournalMemoryStore.shared.updateEntry(id: entry.id, title: title, body: body, createdAt: created)
+                            dismiss()
+                        },
+                        onDelete: {
+                            JournalMemoryStore.shared.delete(ids: [entry.id])
+                            dismiss()
+                        }
+                    ).environmentObject(store)
+
+                // --- Search ---
+                case .search:
+                    JournalLibrarySearchView(
+                        allEntries: journalStore.entries,
+                        onOpen: { tapped in
+                            if looksLikeCtwLocal(tapped.content) {
+                                path.append(.ctwExisting(tapped))
+                            } else if looksLikeBlessingTallyLocal(tapped.content) {
+                                path.append(.blessingTallyExisting(tapped))
+                            } else if looksLikeTenRLocal(tapped.title, tapped.content) {
+                                path.append(.tenRExisting(tapped))
+                            } else if looksLikeScwLocalHome(tapped.content) {
+                                path.append(.scwExisting(tapped))
+                            } else {
+                                path.append(.freeFlowExisting(tapped))
+                            }
+                        },
+                        onDelete: { ids in JournalMemoryStore.shared.delete(ids: ids) }
+                    ).environmentObject(store)
                 }
             }
         }

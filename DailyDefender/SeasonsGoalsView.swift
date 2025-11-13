@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 fileprivate struct SeasonGoalEntry: Identifiable, Equatable {
     let id: Int64
@@ -304,7 +305,22 @@ struct SeasonsGoalsView: View {
 
     private var controlsRow: some View {
         HStack {
+            // Share button (always visible)
+            Button {
+                shareSeasonGoals()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.arrow.up")
+                    Text("Share")
+                }
+                .padding(.vertical, 8)
+                .frame(width: 120)
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
+
             Spacer()
+
             if isEditing {
                 Button {
                     let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -320,8 +336,8 @@ struct SeasonsGoalsView: View {
                         Image(systemName: "square.and.arrow.down.fill")
                         Text("Save")
                     }
-                    .padding(.vertical, 10)
-                    .frame(width: 160)
+                    .padding(.vertical, 8)
+                    .frame(width: 140)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.appGreen)
@@ -338,8 +354,8 @@ struct SeasonsGoalsView: View {
                         Image(systemName: "pencil")
                         Text("Edit")
                     }
-                    .padding(.vertical, 10)
-                    .frame(width: 160)
+                    .padding(.vertical, 8)
+                    .frame(width: 140)
                 }
                 .buttonStyle(.bordered)
                 .tint(.white)
@@ -393,6 +409,37 @@ struct SeasonsGoalsView: View {
         persistNow(includeTrailingNew: true)
         currentKey = store.stepSeason(currentKey, by: delta)
         seedFromStorage()
+    }
+
+    // MARK: - Share helpers
+
+    private func buildSeasonSummaryText() -> String {
+        let header = """
+        Season Goals – \(titleParts.name) \(titleParts.year)
+        \(store.seasonSpan(currentKey))
+
+        """
+
+        if goals.isEmpty {
+            return header + "No goals set yet for this season."
+        }
+
+        let lines = goals.map { entry -> String in
+            let box = entry.done ? "[x]" : "[ ]"
+            return "\(box) \(entry.text)"
+        }.joined(separator: "\n")
+
+        return header + lines
+    }
+
+    private func shareSeasonGoals() {
+        let text = buildSeasonSummaryText()
+        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let root = scene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+            root.present(av, animated: true)
+        }
     }
 }
 

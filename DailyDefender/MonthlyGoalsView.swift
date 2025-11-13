@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit   // ← for UIActivityViewController
 
 // MARK: - Footer navigation signal
 extension Notification.Name {
@@ -322,8 +323,24 @@ struct MonthlyGoalsView: View {
     }
 
     private var controlsRow: some View {
-        HStack {
+        HStack(spacing: 12) {
+            // Share button (always available)
+            Button {
+                shareMonthlyGoals()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "square.and.arrow.up")
+                    Text("Share")
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .frame(width: 120)
+            }
+            .buttonStyle(.bordered)
+            .tint(.white)
+
             Spacer()
+
             if isEditing {
                 Button {
                     // Fold trailing field (if any), then persist and exit edit mode
@@ -332,16 +349,17 @@ struct MonthlyGoalsView: View {
                         goals.append(GoalEntry(id: nextIdAndBump(), text: t, done: false))
                         newGoalText = ""
                     }
-                    persistNow()
+                    persistNow(includeTrailingNew: false)
                     isEditing = false
                     hideKeyboardNow()
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Image(systemName: "square.and.arrow.down.fill")
                         Text("Save")
                     }
-                    .padding(.vertical, 10)
-                    .frame(width: 160)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .frame(width: 120)   // smaller than before (was 160)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.appGreen)
@@ -355,12 +373,13 @@ struct MonthlyGoalsView: View {
                         focusedRow = goals.first?.id
                     }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Image(systemName: "pencil")
                         Text("Edit")
                     }
-                    .padding(.vertical, 10)
-                    .frame(width: 160)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .frame(width: 120)   // smaller than before (was 160)
                 }
                 .buttonStyle(.bordered)
                 .tint(.white)
@@ -419,6 +438,32 @@ struct MonthlyGoalsView: View {
         currentYM = store.step(currentYM, by: months)
         seedFromStorage()
     }
+
+    private func shareMonthlyGoals() {
+        let title = store.ymTitle(currentYM)
+        let header = "Monthly Goals – \(title)\n"
+
+        if goals.isEmpty {
+            presentShareSheet(text: header + "\n(No goals recorded yet.)")
+            return
+        }
+
+        let lines: [String] = goals.compactMap { g in
+            let trimmed = g.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return nil }
+            let box = g.done ? "[x]" : "[ ]"
+            return "\(box) \(trimmed)"
+        }
+
+        let body = lines.joined(separator: "\n")
+        let text = header + "\n" + body
+        presentShareSheet(text: text)
+    }
+
+    private func presentShareSheet(text: String) {
+        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        UIApplication.shared.firstKeyWindow?.rootViewController?.present(av, animated: true)
+    }
 }
 
 // MARK: - Small keyboard helper
@@ -427,5 +472,15 @@ fileprivate extension View {
         #if canImport(UIKit)
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         #endif
+    }
+}
+
+// MARK: - First key window helper for share sheet
+private extension UIApplication {
+    var firstKeyWindow: UIWindow? {
+        connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow }
     }
 }
