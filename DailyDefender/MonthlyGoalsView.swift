@@ -49,16 +49,34 @@ struct MonthlyGoalsView: View {
     @State private var showGoalsShield = false
     @State private var showProfileEdit = false
 
-    // Month / data state
+    // Month
     @State private var currentYM: String = ""
-    @State private var goals: [GoalEntry] = []
+
+    // Per-pillar data
+    @State private var physGoals: [GoalEntry] = []
+    @State private var pietyGoals: [GoalEntry] = []
+    @State private var peopleGoals: [GoalEntry] = []
+    @State private var prodGoals: [GoalEntry] = []
+
+    @State private var newPhysText: String = ""
+    @State private var newPietyText: String = ""
+    @State private var newPeopleText: String = ""
+    @State private var newProdText: String = ""
+
+    @State private var nextPhysId: Int64 = 1
+    @State private var nextPietyId: Int64 = 1
+    @State private var nextPeopleId: Int64 = 1
+    @State private var nextProdId: Int64 = 1
+
+    // Editing
     @State private var isEditing: Bool = false
-    @State private var newGoalText: String = ""
-    @State private var nextId: Int64 = 1
 
     // Focus management (keeps keyboard up on Return)
     @FocusState private var focusedRow: Int64?
-    @FocusState private var trailingFocused: Bool
+    @FocusState private var trailingPhysFocused: Bool
+    @FocusState private var trailingPietyFocused: Bool
+    @FocusState private var trailingPeopleFocused: Bool
+    @FocusState private var trailingProdFocused: Bool
 
     var body: some View {
         ZStack {
@@ -70,8 +88,42 @@ struct MonthlyGoalsView: View {
                     // Month selector
                     monthSelector
 
-                    // Goals card
-                    goalsCard
+                    // Four P sections
+                    pillarSection(
+                        title: "Physiology",
+                        emoji: "💪",
+                        pillar: .Physiology,
+                        goals: $physGoals,
+                        newText: $newPhysText,
+                        trailingFocused: $trailingPhysFocused
+                    )
+
+                    pillarSection(
+                        title: "Piety",
+                        emoji: "🙏",
+                        pillar: .Piety,
+                        goals: $pietyGoals,
+                        newText: $newPietyText,
+                        trailingFocused: $trailingPietyFocused
+                    )
+
+                    pillarSection(
+                        title: "People",
+                        emoji: "👥",
+                        pillar: .People,
+                        goals: $peopleGoals,
+                        newText: $newPeopleText,
+                        trailingFocused: $trailingPeopleFocused
+                    )
+
+                    pillarSection(
+                        title: "Production",
+                        emoji: "💼",
+                        pillar: .Production,
+                        goals: $prodGoals,
+                        newText: $newProdText,
+                        trailingFocused: $trailingProdFocused
+                    )
 
                     // External controls
                     controlsRow
@@ -80,7 +132,7 @@ struct MonthlyGoalsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-                .padding(.bottom, 36)
+                .padding(.bottom, 200)
             }
         }
         .withKeyboardDismiss()
@@ -140,7 +192,7 @@ struct MonthlyGoalsView: View {
         .toolbarBackground(AppTheme.navy900, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        
+
         // Shields / sheets
         .fullScreenCover(isPresented: $showGoalsShield) {
             ShieldPage(imageName: (UIImage(named: "identityncrisis") != nil ? "identityncrisis" : "AppShieldSquare"))
@@ -206,35 +258,60 @@ struct MonthlyGoalsView: View {
         .padding(.vertical, 6)
     }
 
-    private var goalsCard: some View {
-        VStack(spacing: 6) {
-            if goals.isEmpty && !isEditing {
-                Text("No goals yet for this month.")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
+    private func pillarSection(
+        title: String,
+        emoji: String,
+        pillar: Pillar,
+        goals: Binding<[GoalEntry]>,
+        newText: Binding<String>,
+        trailingFocused: FocusState<Bool>.Binding
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Header
+            HStack(spacing: 8) {
+                Text(emoji)
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.textPrimary)
             }
+            .padding(.horizontal, 4)
 
-            ForEach(Array(goals.enumerated()), id: \.element.id) { index, entry in
-                row(index: index, entry: entry)
+            // Card
+            VStack(spacing: 6) {
+                if goals.wrappedValue.isEmpty && !isEditing {
+                    Text("No goals yet for this month.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                }
+
+                ForEach(Array(goals.wrappedValue.enumerated()), id: \.element.id) { index, entry in
+                    row(pillar: pillar, index: index, entry: entry)
+                }
+
+                if isEditing {
+                    trailingNewRow(
+                        pillar: pillar,
+                        newText: newText,
+                        trailingFocused: trailingFocused
+                    )
+                }
             }
-
-            if isEditing { trailingNewRow }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.surfaceUI)
+                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+            )
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.surfaceUI)
-                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
-        )
     }
 
-    private func row(index: Int, entry: GoalEntry) -> some View {
+    private func row(pillar: Pillar, index: Int, entry: GoalEntry) -> some View {
         HStack(spacing: 10) {
             // Compact checkbox
             Button {
-                toggleDone(index: index)
+                toggleDone(in: pillar, index: index)
             } label: {
                 Image(systemName: entry.done ? "checkmark.square.fill" : "square")
                     .symbolRenderingMode(.palette)
@@ -246,23 +323,17 @@ struct MonthlyGoalsView: View {
             .accessibilityLabel(entry.done ? "Mark not done" : "Mark done")
 
             if isEditing {
-                // Editable text field; Return keeps keyboard up and adds a new row
                 TextField("Enter goal…", text: Binding(
-                    get: { goals[index].text },
-                    set: { newValue in
-                        if let nl = newValue.firstIndex(of: "\n") {
-                            let before = String(newValue[..<nl])
-                            let after = newValue[newValue.index(after: nl)...].trimmingCharacters(in: .whitespacesAndNewlines)
-                            goals[index].text = before
-                            if !after.isEmpty {
-                                let newId = nextIdAndBump()
-                                goals.insert(GoalEntry(id: newId, text: after, done: false), at: index + 1)
-                                focusedRow = newId
-                            }
-                            persistNow()
-                        } else {
-                            goals[index].text = newValue
+                    get: {
+                        switch pillar {
+                        case .Physiology: return physGoals[index].text
+                        case .Piety:      return pietyGoals[index].text
+                        case .People:     return peopleGoals[index].text
+                        case .Production: return prodGoals[index].text
                         }
+                    },
+                    set: { newValue in
+                        handleRowTextChange(pillar: pillar, index: index, newValue: newValue)
                     }
                 ))
                 .textInputAutocapitalization(.sentences)
@@ -270,17 +341,12 @@ struct MonthlyGoalsView: View {
                 .submitLabel(.return)
                 .focused($focusedRow, equals: entry.id)
                 .onSubmit {
-                    let t = goals[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !t.isEmpty else { return }
-                    let newId = nextIdAndBump()
-                    goals.insert(GoalEntry(id: newId, text: "", done: false), at: index + 1)
-                    persistNow()
-                    focusedRow = newId
+                    handleRowSubmit(pillar: pillar, index: index)
                 }
 
                 // Delete affordance
                 Button {
-                    goals.remove(at: index)
+                    deleteRow(in: pillar, index: index)
                     persistNow()
                 } label: {
                     Image(systemName: "trash")
@@ -298,25 +364,40 @@ struct MonthlyGoalsView: View {
         .padding(.vertical, 4)
     }
 
-    private var trailingNewRow: some View {
+    private func trailingNewRow(
+        pillar: Pillar,
+        newText: Binding<String>,
+        trailingFocused: FocusState<Bool>.Binding
+    ) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "square")
                 .foregroundStyle(AppTheme.textSecondary)
                 .font(.title3)
 
-            TextField("Add another goal…", text: $newGoalText)
+            TextField("Add another goal…", text: newText)
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
                 .submitLabel(.return)
-                .focused($trailingFocused)
+                .focused(trailingFocused)
                 .onSubmit {
-                    let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let t = newText.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !t.isEmpty else { return }
-                    goals.append(GoalEntry(id: nextIdAndBump(), text: t, done: false))
-                    newGoalText = ""
+
+                    switch pillar {
+                    case .Physiology:
+                        physGoals.append(GoalEntry(id: nextIdAndBump(&nextPhysId), text: t, done: false))
+                    case .Piety:
+                        pietyGoals.append(GoalEntry(id: nextIdAndBump(&nextPietyId), text: t, done: false))
+                    case .People:
+                        peopleGoals.append(GoalEntry(id: nextIdAndBump(&nextPeopleId), text: t, done: false))
+                    case .Production:
+                        prodGoals.append(GoalEntry(id: nextIdAndBump(&nextProdId), text: t, done: false))
+                    }
+
+                    newText.wrappedValue = ""
                     persistNow()
-                    // Keep keyboard up for rapid entry
-                    trailingFocused = true
+                    // Keep keyboard up for rapid entry in this pillar
+                    trailingFocused.wrappedValue = true
                 }
         }
         .padding(.vertical, 4)
@@ -343,12 +424,8 @@ struct MonthlyGoalsView: View {
 
             if isEditing {
                 Button {
-                    // Fold trailing field (if any), then persist and exit edit mode
-                    let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !t.isEmpty {
-                        goals.append(GoalEntry(id: nextIdAndBump(), text: t, done: false))
-                        newGoalText = ""
-                    }
+                    // Fold trailing fields (if any), then persist and exit edit mode
+                    foldTrailingNewIntoLists()
                     persistNow(includeTrailingNew: false)
                     isEditing = false
                     hideKeyboardNow()
@@ -359,18 +436,18 @@ struct MonthlyGoalsView: View {
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, 10)
-                    .frame(width: 120)   // smaller than before (was 160)
+                    .frame(width: 120)
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(AppTheme.appGreen)
             } else {
                 Button {
                     isEditing = true
-                    // Put cursor into trailing field if there are no rows, otherwise first row
-                    if goals.isEmpty {
-                        trailingFocused = true
+                    // Put cursor into first existing row, otherwise first trailing field
+                    if let firstId = firstExistingRowId() {
+                        focusedRow = firstId
                     } else {
-                        focusedRow = goals.first?.id
+                        trailingPhysFocused = true
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -379,7 +456,7 @@ struct MonthlyGoalsView: View {
                     }
                     .padding(.vertical, 8)
                     .padding(.horizontal, 10)
-                    .frame(width: 120)   // smaller than before (was 160)
+                    .frame(width: 120)
                 }
                 .buttonStyle(.bordered)
                 .tint(.white)
@@ -390,25 +467,48 @@ struct MonthlyGoalsView: View {
 
     // MARK: - Actions / helpers
 
-    private func nextIdAndBump() -> Int64 {
-        defer { nextId &+= 1 }
-        return nextId
+    private func nextIdAndBump(_ counter: inout Int64) -> Int64 {
+        defer { counter &+= 1 }
+        return counter
     }
 
     private func seedFromStorage() {
-        goals.removeAll(keepingCapacity: true)
-        nextId = 1
-        let raw = store.monthlyGoals(for: currentYM)
-        for enc in raw {
-            if var e = decodeOne(enc) {
-                e = GoalEntry(id: nextIdAndBump(), text: e.text, done: e.done)
-                goals.append(e)
+        physGoals.removeAll(keepingCapacity: true)
+        pietyGoals.removeAll(keepingCapacity: true)
+        peopleGoals.removeAll(keepingCapacity: true)
+        prodGoals.removeAll(keepingCapacity: true)
+
+        nextPhysId = 1
+        nextPietyId = 1
+        nextPeopleId = 1
+        nextProdId = 1
+
+        newPhysText = ""
+        newPietyText = ""
+        newPeopleText = ""
+        newProdText = ""
+
+        func seedOne(raw: [String], into goals: inout [GoalEntry], counter: inout Int64) {
+            for enc in raw {
+                if let decoded = decodeOne(enc) {
+                    let id = nextIdAndBump(&counter)
+                    goals.append(GoalEntry(id: id, text: decoded.text, done: decoded.done))
+                }
             }
         }
-        newGoalText = ""
+
+        let physRaw   = store.monthlyGoals(for: currentYM, pillar: .Physiology)
+        let pietyRaw  = store.monthlyGoals(for: currentYM, pillar: .Piety)
+        let peopleRaw = store.monthlyGoals(for: currentYM, pillar: .People)
+        let prodRaw   = store.monthlyGoals(for: currentYM, pillar: .Production)
+
+        seedOne(raw: physRaw,   into: &physGoals,   counter: &nextPhysId)
+        seedOne(raw: pietyRaw,  into: &pietyGoals,  counter: &nextPietyId)
+        seedOne(raw: peopleRaw, into: &peopleGoals, counter: &nextPeopleId)
+        seedOne(raw: prodRaw,   into: &prodGoals,   counter: &nextProdId)
     }
 
-    private func persistNow(includeTrailingNew: Bool = false) {
+    private func buildPayload(from goals: [GoalEntry], trailingNew: String?) -> [String] {
         var payload: [String] = []
         for g in goals {
             let t = g.text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -416,71 +516,214 @@ struct MonthlyGoalsView: View {
                 payload.append(encodeOne(t, done: g.done))
             }
         }
-        if includeTrailingNew {
-            let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trailing = trailingNew {
+            let t = trailing.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty {
                 payload.append(encodeOne(t, done: false))
             }
         }
-        store.setMonthlyGoals(payload, for: currentYM)
+        return payload
     }
 
-    private func toggleDone(index: Int) {
-        guard goals.indices.contains(index) else { return }
-        goals[index].done.toggle()
-        // Save immediately (parity with Android)
+    private func persistNow(includeTrailingNew: Bool = false) {
+        let physPayload   = buildPayload(from: physGoals,   trailingNew: includeTrailingNew ? newPhysText   : nil)
+        let pietyPayload  = buildPayload(from: pietyGoals,  trailingNew: includeTrailingNew ? newPietyText  : nil)
+        let peoplePayload = buildPayload(from: peopleGoals, trailingNew: includeTrailingNew ? newPeopleText : nil)
+        let prodPayload   = buildPayload(from: prodGoals,   trailingNew: includeTrailingNew ? newProdText   : nil)
+
+        store.setMonthlyGoals(physPayload,   for: currentYM, pillar: .Physiology)
+        store.setMonthlyGoals(pietyPayload,  for: currentYM, pillar: .Piety)
+        store.setMonthlyGoals(peoplePayload, for: currentYM, pillar: .People)
+        store.setMonthlyGoals(prodPayload,   for: currentYM, pillar: .Production)
+    }
+
+    private func toggleDone(in pillar: Pillar, index: Int) {
+        switch pillar {
+        case .Physiology:
+            guard physGoals.indices.contains(index) else { return }
+            physGoals[index].done.toggle()
+        case .Piety:
+            guard pietyGoals.indices.contains(index) else { return }
+            pietyGoals[index].done.toggle()
+        case .People:
+            guard peopleGoals.indices.contains(index) else { return }
+            peopleGoals[index].done.toggle()
+        case .Production:
+            guard prodGoals.indices.contains(index) else { return }
+            prodGoals[index].done.toggle()
+        }
         persistNow()
     }
 
+    private func handleRowTextChange(pillar: Pillar, index: Int, newValue: String) {
+        func splitAndInsert(
+            goals: inout [GoalEntry],
+            counter: inout Int64
+        ) {
+            if let nl = newValue.firstIndex(of: "\n") {
+                let before = String(newValue[..<nl])
+                let after = newValue[newValue.index(after: nl)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                goals[index].text = before
+                if !after.isEmpty {
+                    let newId = nextIdAndBump(&counter)
+                    goals.insert(GoalEntry(id: newId, text: after, done: false), at: index + 1)
+                    DispatchQueue.main.async {
+                        focusedRow = newId
+                    }
+                }
+                persistNow()
+            } else {
+                goals[index].text = newValue
+            }
+        }
+
+        switch pillar {
+        case .Physiology:
+            guard physGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &physGoals, counter: &nextPhysId)
+        case .Piety:
+            guard pietyGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &pietyGoals, counter: &nextPietyId)
+        case .People:
+            guard peopleGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &peopleGoals, counter: &nextPeopleId)
+        case .Production:
+            guard prodGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &prodGoals, counter: &nextProdId)
+        }
+    }
+
+    private func handleRowSubmit(pillar: Pillar, index: Int) {
+        func submit(goals: inout [GoalEntry], counter: inout Int64) {
+            guard goals.indices.contains(index) else { return }
+            let t = goals[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            let newId = nextIdAndBump(&counter)
+            goals.insert(GoalEntry(id: newId, text: "", done: false), at: index + 1)
+            persistNow()
+                DispatchQueue.main.async {
+                    focusedRow = newId
+                }
+        }
+
+        switch pillar {
+        case .Physiology:
+            submit(goals: &physGoals, counter: &nextPhysId)
+        case .Piety:
+            submit(goals: &pietyGoals, counter: &nextPietyId)
+        case .People:
+            submit(goals: &peopleGoals, counter: &nextPeopleId)
+        case .Production:
+            submit(goals: &prodGoals, counter: &nextProdId)
+        }
+    }
+
+    private func deleteRow(in pillar: Pillar, index: Int) {
+        switch pillar {
+        case .Physiology:
+            guard physGoals.indices.contains(index) else { return }
+            physGoals.remove(at: index)
+        case .Piety:
+            guard pietyGoals.indices.contains(index) else { return }
+            pietyGoals.remove(at: index)
+        case .People:
+            guard peopleGoals.indices.contains(index) else { return }
+            peopleGoals.remove(at: index)
+        case .Production:
+            guard prodGoals.indices.contains(index) else { return }
+            prodGoals.remove(at: index)
+        }
+    }
+
+    private func foldTrailingNewIntoLists() {
+        let phys = newPhysText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !phys.isEmpty {
+            physGoals.append(GoalEntry(id: nextIdAndBump(&nextPhysId), text: phys, done: false))
+        }
+        newPhysText = ""
+
+        let piety = newPietyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !piety.isEmpty {
+            pietyGoals.append(GoalEntry(id: nextIdAndBump(&nextPietyId), text: piety, done: false))
+        }
+        newPietyText = ""
+
+        let people = newPeopleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !people.isEmpty {
+            peopleGoals.append(GoalEntry(id: nextIdAndBump(&nextPeopleId), text: people, done: false))
+        }
+        newPeopleText = ""
+
+        let prod = newProdText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !prod.isEmpty {
+            prodGoals.append(GoalEntry(id: nextIdAndBump(&nextProdId), text: prod, done: false))
+        }
+        newProdText = ""
+    }
+
+    private func firstExistingRowId() -> Int64? {
+        if let g = physGoals.first { return g.id }
+        if let g = pietyGoals.first { return g.id }
+        if let g = peopleGoals.first { return g.id }
+        if let g = prodGoals.first { return g.id }
+        return nil
+    }
+
     private func saveThenStep(by months: Int) {
-        hideKeyboardNow()
+        // Save everything, including trailing "new" text, then move month
         persistNow(includeTrailingNew: true)
+        hideKeyboardNow()
         currentYM = store.step(currentYM, by: months)
         seedFromStorage()
     }
 
     private func shareMonthlyGoals() {
-        let title = store.ymTitle(currentYM)
-        let header = "Monthly Goals – \(title)\n"
+        // Commit any composing text
+        hideKeyboardNow()
+        persistNow(includeTrailingNew: true)
 
-        if goals.isEmpty {
-            presentShareSheet(text: header + "\n(No goals recorded yet.)")
+        func texts(from goals: [GoalEntry]) -> [String] {
+            goals
+                .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        }
+
+        let phys  = texts(from: physGoals)
+        let piety = texts(from: pietyGoals)
+        let people = texts(from: peopleGoals)
+        let prod  = texts(from: prodGoals)
+
+        var parts: [String] = []
+        parts.append("Monthly Goals — \(store.ymTitle(currentYM))")
+
+        func appendSection(title: String, emoji: String, items: [String]) {
+            guard !items.isEmpty else { return }
+            parts.append("") // blank line
+            parts.append("\(emoji) \(title)")
+            for t in items {
+                parts.append("• \(t)")
+            }
+        }
+
+        appendSection(title: "Physiology", emoji: "💪", items: phys)
+        appendSection(title: "Piety",      emoji: "🙏", items: piety)
+        appendSection(title: "People",     emoji: "👥", items: people)
+        appendSection(title: "Production", emoji: "💼", items: prod)
+
+        let text = parts.joined(separator: "\n")
+
+        guard let root = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .flatMap({ $0.windows })
+            .first(where: { $0.isKeyWindow })?.rootViewController else {
             return
         }
 
-        let lines: [String] = goals.compactMap { g in
-            let trimmed = g.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return nil }
-            let box = g.done ? "[x]" : "[ ]"
-            return "\(box) \(trimmed)"
-        }
-
-        let body = lines.joined(separator: "\n")
-        let text = header + "\n" + body
-        presentShareSheet(text: text)
+        let vc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
+        root.present(vc, animated: true, completion: nil)
     }
 
-    private func presentShareSheet(text: String) {
-        let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-        UIApplication.shared.firstKeyWindow?.rootViewController?.present(av, animated: true)
-    }
-}
-
-// MARK: - Small keyboard helper
-fileprivate extension View {
-    func hideKeyboardNow() {
-        #if canImport(UIKit)
+    private func hideKeyboardNow() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        #endif
-    }
-}
-
-// MARK: - First key window helper for share sheet
-private extension UIApplication {
-    var firstKeyWindow: UIWindow? {
-        connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow }
     }
 }

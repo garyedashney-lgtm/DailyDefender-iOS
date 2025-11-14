@@ -113,10 +113,7 @@ private struct Content: View {
 
                 case .more:
                     MoreView()
-                            .environmentObject(store)
-                    
-    
-            
+                        .environmentObject(store)
                 }
             }
         }
@@ -187,6 +184,7 @@ private struct JournalPlaceholderView: View {
         }
     }
 }
+
 private extension Notification.Name {
     static let reselectTab = Notification.Name("reselectTab")
 }

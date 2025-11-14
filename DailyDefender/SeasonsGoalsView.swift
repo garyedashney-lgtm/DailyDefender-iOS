@@ -41,15 +41,30 @@ struct SeasonsGoalsView: View {
     @State private var currentKey: String = ""
     @State private var titleParts: (name: String, year: Int) = ("", 0)
 
-    // In-memory list + edit state
-    @State private var goals: [SeasonGoalEntry] = []
+    // Per-pillar lists
+    @State private var physGoals: [SeasonGoalEntry] = []
+    @State private var pietyGoals: [SeasonGoalEntry] = []
+    @State private var peopleGoals: [SeasonGoalEntry] = []
+    @State private var prodGoals: [SeasonGoalEntry] = []
+
+    @State private var newPhysText: String = ""
+    @State private var newPietyText: String = ""
+    @State private var newPeopleText: String = ""
+    @State private var newProdText: String = ""
+
+    @State private var nextPhysId: Int64 = 1
+    @State private var nextPietyId: Int64 = 1
+    @State private var nextPeopleId: Int64 = 1
+    @State private var nextProdId: Int64 = 1
+
     @State private var isEditing = false
-    @State private var newGoalText = ""
-    @State private var nextId: Int64 = 1
 
     // Focus (keep keyboard up on return)
     @FocusState private var focusedRow: Int64?
-    @FocusState private var trailingFocused: Bool
+    @FocusState private var trailingPhysFocused: Bool
+    @FocusState private var trailingPietyFocused: Bool
+    @FocusState private var trailingPeopleFocused: Bool
+    @FocusState private var trailingProdFocused: Bool
 
     var body: some View {
         ZStack {
@@ -60,7 +75,42 @@ struct SeasonsGoalsView: View {
 
                     seasonSelector
 
-                    goalsCard
+                    // 4 pillars like Monthly / Yearly
+                    pillarSection(
+                        title: "Physiology",
+                        emoji: "💪",
+                        pillar: .Physiology,
+                        goals: $physGoals,
+                        newText: $newPhysText,
+                        trailingFocused: $trailingPhysFocused
+                    )
+
+                    pillarSection(
+                        title: "Piety",
+                        emoji: "🙏",
+                        pillar: .Piety,
+                        goals: $pietyGoals,
+                        newText: $newPietyText,
+                        trailingFocused: $trailingPietyFocused
+                    )
+
+                    pillarSection(
+                        title: "People",
+                        emoji: "👥",
+                        pillar: .People,
+                        goals: $peopleGoals,
+                        newText: $newPeopleText,
+                        trailingFocused: $trailingPeopleFocused
+                    )
+
+                    pillarSection(
+                        title: "Production",
+                        emoji: "💼",
+                        pillar: .Production,
+                        goals: $prodGoals,
+                        newText: $newProdText,
+                        trailingFocused: $trailingProdFocused
+                    )
 
                     controlsRow
 
@@ -68,7 +118,7 @@ struct SeasonsGoalsView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-                .padding(.bottom, 36)
+                .padding(.bottom, 200) // generous for keyboard + Save
             }
         }
         .withKeyboardDismiss()
@@ -156,7 +206,7 @@ struct SeasonsGoalsView: View {
         }
     }
 
-    // MARK: UI pieces
+    // MARK: - UI pieces
 
     private var seasonSelector: some View {
         VStack(spacing: 2) {
@@ -194,37 +244,64 @@ struct SeasonsGoalsView: View {
         .padding(.vertical, 6)
     }
 
-    private var goalsCard: some View {
-        VStack(spacing: 6) {
-            if goals.isEmpty && !isEditing {
-                Text("No goals yet for this season.")
-                    .font(.subheadline)
-                    .foregroundStyle(AppTheme.textSecondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 6)
+    private func pillarSection(
+        title: String,
+        emoji: String,
+        pillar: Pillar,
+        goals: Binding<[SeasonGoalEntry]>,
+        newText: Binding<String>,
+        trailingFocused: FocusState<Bool>.Binding
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(emoji)
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(AppTheme.textPrimary)
             }
+            .padding(.horizontal, 4)
 
-            ForEach(Array(goals.enumerated()), id: \.element.id) { index, entry in
-                row(index: index, entry: entry)
+            VStack(spacing: 6) {
+                if goals.wrappedValue.isEmpty && !isEditing {
+                    Text("No goals yet for this season.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                }
+
+                ForEach(Array(goals.wrappedValue.enumerated()), id: \.element.id) { index, entry in
+                    row(pillar: pillar, index: index, entry: entry)
+                }
+
+                if isEditing {
+                    trailingNewRow(
+                        pillar: pillar,
+                        newText: newText,
+                        trailingFocused: trailingFocused
+                    )
+                }
             }
-
-            if isEditing { trailingNewRow }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(AppTheme.surfaceUI)
+                    .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
+            )
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.surfaceUI)
-                .shadow(color: .black.opacity(0.25), radius: 2, x: 0, y: 1)
-        )
     }
 
-    private func row(index: Int, entry: SeasonGoalEntry) -> some View {
+    private func row(pillar: Pillar, index: Int, entry: SeasonGoalEntry) -> some View {
         HStack(spacing: 10) {
-            Button { toggleDone(index: index) } label: {
+            Button {
+                toggleDone(in: pillar, index: index)
+            } label: {
                 Image(systemName: entry.done ? "checkmark.square.fill" : "square")
                     .symbolRenderingMode(.palette)
-                    .foregroundStyle(entry.done ? .white : AppTheme.textPrimary,
-                                     entry.done ? AppTheme.appGreen : .clear)
+                    .foregroundStyle(
+                        entry.done ? .white : AppTheme.textPrimary,
+                        entry.done ? AppTheme.appGreen : .clear
+                    )
                     .font(.title3)
             }
             .buttonStyle(.plain)
@@ -232,21 +309,16 @@ struct SeasonsGoalsView: View {
 
             if isEditing {
                 TextField("Enter goal…", text: Binding(
-                    get: { goals[index].text },
-                    set: { newValue in
-                        if let nl = newValue.firstIndex(of: "\n") {
-                            let before = String(newValue[..<nl])
-                            let after = newValue[newValue.index(after: nl)...].trimmingCharacters(in: .whitespacesAndNewlines)
-                            goals[index].text = before
-                            if !after.isEmpty {
-                                let newId = nextIdAndBump()
-                                goals.insert(SeasonGoalEntry(id: newId, text: after, done: false), at: index + 1)
-                                focusedRow = newId
-                            }
-                            persistNow()
-                        } else {
-                            goals[index].text = newValue
+                    get: {
+                        switch pillar {
+                        case .Physiology: return physGoals[index].text
+                        case .Piety:      return pietyGoals[index].text
+                        case .People:     return peopleGoals[index].text
+                        case .Production: return prodGoals[index].text
                         }
+                    },
+                    set: { newValue in
+                        handleRowTextChange(pillar: pillar, index: index, newValue: newValue)
                     }
                 ))
                 .textInputAutocapitalization(.sentences)
@@ -254,16 +326,11 @@ struct SeasonsGoalsView: View {
                 .submitLabel(.return)
                 .focused($focusedRow, equals: entry.id)
                 .onSubmit {
-                    let t = goals[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !t.isEmpty else { return }
-                    let newId = nextIdAndBump()
-                    goals.insert(SeasonGoalEntry(id: newId, text: "", done: false), at: index + 1)
-                    persistNow()
-                    focusedRow = newId
+                    handleRowSubmit(pillar: pillar, index: index)
                 }
 
                 Button {
-                    goals.remove(at: index)
+                    deleteRow(in: pillar, index: index)
                     persistNow()
                 } label: {
                     Image(systemName: "trash")
@@ -280,24 +347,39 @@ struct SeasonsGoalsView: View {
         .padding(.vertical, 4)
     }
 
-    private var trailingNewRow: some View {
+    private func trailingNewRow(
+        pillar: Pillar,
+        newText: Binding<String>,
+        trailingFocused: FocusState<Bool>.Binding
+    ) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "square")
                 .foregroundStyle(AppTheme.textSecondary)
                 .font(.title3)
 
-            TextField("Add another goal…", text: $newGoalText)
+            TextField("Add another goal…", text: newText)
                 .textInputAutocapitalization(.sentences)
                 .autocorrectionDisabled(false)
                 .submitLabel(.return)
-                .focused($trailingFocused)
+                .focused(trailingFocused)
                 .onSubmit {
-                    let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let t = newText.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !t.isEmpty else { return }
-                    goals.append(SeasonGoalEntry(id: nextIdAndBump(), text: t, done: false))
-                    newGoalText = ""
+
+                    switch pillar {
+                    case .Physiology:
+                        physGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextPhysId), text: t, done: false))
+                    case .Piety:
+                        pietyGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextPietyId), text: t, done: false))
+                    case .People:
+                        peopleGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextPeopleId), text: t, done: false))
+                    case .Production:
+                        prodGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextProdId), text: t, done: false))
+                    }
+
+                    newText.wrappedValue = ""
                     persistNow()
-                    trailingFocused = true
+                    trailingFocused.wrappedValue = true
                 }
         }
         .padding(.vertical, 4)
@@ -323,12 +405,8 @@ struct SeasonsGoalsView: View {
 
             if isEditing {
                 Button {
-                    let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !t.isEmpty {
-                        goals.append(SeasonGoalEntry(id: nextIdAndBump(), text: t, done: false))
-                        newGoalText = ""
-                    }
-                    persistNow()
+                    foldTrailingNewIntoLists()
+                    persistNow(includeTrailingNew: false)
                     isEditing = false
                     hideKeyboardNow()
                 } label: {
@@ -344,10 +422,10 @@ struct SeasonsGoalsView: View {
             } else {
                 Button {
                     isEditing = true
-                    if goals.isEmpty {
-                        trailingFocused = true
+                    if let firstId = firstExistingRowId() {
+                        focusedRow = firstId
                     } else {
-                        focusedRow = goals.first?.id
+                        trailingPhysFocused = true
                     }
                 } label: {
                     HStack(spacing: 8) {
@@ -364,44 +442,203 @@ struct SeasonsGoalsView: View {
         .padding(.top, 4)
     }
 
-    // MARK: logic
+    // MARK: - Logic
 
-    private func nextIdAndBump() -> Int64 {
-        defer { nextId &+= 1 }
-        return nextId
+    private func nextIdAndBump(_ counter: inout Int64) -> Int64 {
+        defer { counter &+= 1 }
+        return counter
     }
 
     private func seedFromStorage() {
-        goals.removeAll(keepingCapacity: true)
-        nextId = 1
-        let raw = store.seasonGoals(for: currentKey)
-        for enc in raw {
-            if var e = decodeOne(enc) {
-                e = SeasonGoalEntry(id: nextIdAndBump(), text: e.text, done: e.done)
-                goals.append(e)
+        physGoals.removeAll(keepingCapacity: true)
+        pietyGoals.removeAll(keepingCapacity: true)
+        peopleGoals.removeAll(keepingCapacity: true)
+        prodGoals.removeAll(keepingCapacity: true)
+
+        nextPhysId = 1
+        nextPietyId = 1
+        nextPeopleId = 1
+        nextProdId = 1
+
+        newPhysText = ""
+        newPietyText = ""
+        newPeopleText = ""
+        newProdText = ""
+
+        func seedOne(raw: [String], into goals: inout [SeasonGoalEntry], counter: inout Int64) {
+            for enc in raw {
+                if let decoded = decodeOne(enc) {
+                    let id = nextIdAndBump(&counter)
+                    goals.append(SeasonGoalEntry(id: id, text: decoded.text, done: decoded.done))
+                }
             }
         }
-        newGoalText = ""
+
+        let physRaw   = store.seasonGoals(for: currentKey, pillar: .Physiology)
+        let pietyRaw  = store.seasonGoals(for: currentKey, pillar: .Piety)
+        let peopleRaw = store.seasonGoals(for: currentKey, pillar: .People)
+        let prodRaw   = store.seasonGoals(for: currentKey, pillar: .Production)
+
+        seedOne(raw: physRaw,   into: &physGoals,   counter: &nextPhysId)
+        seedOne(raw: pietyRaw,  into: &pietyGoals,  counter: &nextPietyId)
+        seedOne(raw: peopleRaw, into: &peopleGoals, counter: &nextPeopleId)
+        seedOne(raw: prodRaw,   into: &prodGoals,   counter: &nextProdId)
+
         titleParts = store.seasonTitleParts(currentKey)
     }
 
-    private func persistNow(includeTrailingNew: Bool = false) {
+    private func buildPayload(from goals: [SeasonGoalEntry], trailingNew: String?) -> [String] {
         var payload: [String] = []
         for g in goals {
             let t = g.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty { payload.append(encodeOne(t, done: g.done)) }
         }
-        if includeTrailingNew {
-            let t = newGoalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trailing = trailingNew {
+            let t = trailing.trimmingCharacters(in: .whitespacesAndNewlines)
             if !t.isEmpty { payload.append(encodeOne(t, done: false)) }
         }
-        store.setSeasonGoals(currentKey, payload)
+        return payload
     }
 
-    private func toggleDone(index: Int) {
-        guard goals.indices.contains(index) else { return }
-        goals[index].done.toggle()
+    private func persistNow(includeTrailingNew: Bool = false) {
+        let physPayload   = buildPayload(from: physGoals,   trailingNew: includeTrailingNew ? newPhysText   : nil)
+        let pietyPayload  = buildPayload(from: pietyGoals,  trailingNew: includeTrailingNew ? newPietyText  : nil)
+        let peoplePayload = buildPayload(from: peopleGoals, trailingNew: includeTrailingNew ? newPeopleText : nil)
+        let prodPayload   = buildPayload(from: prodGoals,   trailingNew: includeTrailingNew ? newProdText   : nil)
+
+        store.setSeasonGoals(currentKey, physPayload,   pillar: .Physiology)
+        store.setSeasonGoals(currentKey, pietyPayload,  pillar: .Piety)
+        store.setSeasonGoals(currentKey, peoplePayload, pillar: .People)
+        store.setSeasonGoals(currentKey, prodPayload,   pillar: .Production)
+    }
+
+    private func toggleDone(in pillar: Pillar, index: Int) {
+        switch pillar {
+        case .Physiology:
+            guard physGoals.indices.contains(index) else { return }
+            physGoals[index].done.toggle()
+        case .Piety:
+            guard pietyGoals.indices.contains(index) else { return }
+            pietyGoals[index].done.toggle()
+        case .People:
+            guard peopleGoals.indices.contains(index) else { return }
+            peopleGoals[index].done.toggle()
+        case .Production:
+            guard prodGoals.indices.contains(index) else { return }
+            prodGoals[index].done.toggle()
+        }
         persistNow()
+    }
+
+    private func handleRowTextChange(pillar: Pillar, index: Int, newValue: String) {
+        func splitAndInsert(goals: inout [SeasonGoalEntry], counter: inout Int64) {
+            if let nl = newValue.firstIndex(of: "\n") {
+                let before = String(newValue[..<nl])
+                let after = newValue[newValue.index(after: nl)...].trimmingCharacters(in: .whitespacesAndNewlines)
+                goals[index].text = before
+                if !after.isEmpty {
+                    let newId = nextIdAndBump(&counter)
+                    goals.insert(SeasonGoalEntry(id: newId, text: after, done: false), at: index + 1)
+                    DispatchQueue.main.async {
+                        focusedRow = newId
+                    }
+                }
+                persistNow()
+            } else {
+                goals[index].text = newValue
+            }
+        }
+
+        switch pillar {
+        case .Physiology:
+            guard physGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &physGoals, counter: &nextPhysId)
+        case .Piety:
+            guard pietyGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &pietyGoals, counter: &nextPietyId)
+        case .People:
+            guard peopleGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &peopleGoals, counter: &nextPeopleId)
+        case .Production:
+            guard prodGoals.indices.contains(index) else { return }
+            splitAndInsert(goals: &prodGoals, counter: &nextProdId)
+        }
+    }
+
+    private func handleRowSubmit(pillar: Pillar, index: Int) {
+        func submit(goals: inout [SeasonGoalEntry], counter: inout Int64) {
+            guard goals.indices.contains(index) else { return }
+            let t = goals[index].text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty else { return }
+            let newId = nextIdAndBump(&counter)
+            goals.insert(SeasonGoalEntry(id: newId, text: "", done: false), at: index + 1)
+            persistNow()
+            DispatchQueue.main.async {
+                focusedRow = newId
+            }
+        }
+
+        switch pillar {
+        case .Physiology:
+            submit(goals: &physGoals, counter: &nextPhysId)
+        case .Piety:
+            submit(goals: &pietyGoals, counter: &nextPietyId)
+        case .People:
+            submit(goals: &peopleGoals, counter: &nextPeopleId)
+        case .Production:
+            submit(goals: &prodGoals, counter: &nextProdId)
+        }
+    }
+
+    private func deleteRow(in pillar: Pillar, index: Int) {
+        switch pillar {
+        case .Physiology:
+            guard physGoals.indices.contains(index) else { return }
+            physGoals.remove(at: index)
+        case .Piety:
+            guard pietyGoals.indices.contains(index) else { return }
+            pietyGoals.remove(at: index)
+        case .People:
+            guard peopleGoals.indices.contains(index) else { return }
+            peopleGoals.remove(at: index)
+        case .Production:
+            guard prodGoals.indices.contains(index) else { return }
+            prodGoals.remove(at: index)
+        }
+    }
+
+    private func foldTrailingNewIntoLists() {
+        let phys = newPhysText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !phys.isEmpty {
+            physGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextPhysId), text: phys, done: false))
+        }
+        newPhysText = ""
+
+        let piety = newPietyText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !piety.isEmpty {
+            pietyGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextPietyId), text: piety, done: false))
+        }
+        newPietyText = ""
+
+        let people = newPeopleText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !people.isEmpty {
+            peopleGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextPeopleId), text: people, done: false))
+        }
+        newPeopleText = ""
+
+        let prod = newProdText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !prod.isEmpty {
+            prodGoals.append(SeasonGoalEntry(id: nextIdAndBump(&nextProdId), text: prod, done: false))
+        }
+        newProdText = ""
+    }
+
+    private func firstExistingRowId() -> Int64? {
+        if let g = physGoals.first { return g.id }
+        if let g = pietyGoals.first { return g.id }
+        if let g = peopleGoals.first { return g.id }
+        if let g = prodGoals.first { return g.id }
+        return nil
     }
 
     private func saveThenStep(by delta: Int) {
@@ -414,22 +651,36 @@ struct SeasonsGoalsView: View {
     // MARK: - Share helpers
 
     private func buildSeasonSummaryText() -> String {
-        let header = """
-        Season Goals – \(titleParts.name) \(titleParts.year)
-        \(store.seasonSpan(currentKey))
-
-        """
-
-        if goals.isEmpty {
-            return header + "No goals set yet for this season."
+        func texts(from goals: [SeasonGoalEntry]) -> [String] {
+            goals
+                .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
         }
 
-        let lines = goals.map { entry -> String in
-            let box = entry.done ? "[x]" : "[ ]"
-            return "\(box) \(entry.text)"
-        }.joined(separator: "\n")
+        let phys   = texts(from: physGoals)
+        let piety  = texts(from: pietyGoals)
+        let people = texts(from: peopleGoals)
+        let prod   = texts(from: prodGoals)
 
-        return header + lines
+        var parts: [String] = []
+        parts.append("Season Goals – \(titleParts.name) \(titleParts.year)")
+        parts.append(store.seasonSpan(currentKey))
+
+        func appendSection(title: String, emoji: String, items: [String]) {
+            guard !items.isEmpty else { return }
+            parts.append("")
+            parts.append("\(emoji) \(title)")
+            for t in items {
+                parts.append("• \(t)")
+            }
+        }
+
+        appendSection(title: "Physiology", emoji: "💪", items: phys)
+        appendSection(title: "Piety",      emoji: "🙏", items: piety)
+        appendSection(title: "People",     emoji: "👥", items: people)
+        appendSection(title: "Production", emoji: "💼", items: prod)
+
+        return parts.joined(separator: "\n")
     }
 
     private func shareSeasonGoals() {
