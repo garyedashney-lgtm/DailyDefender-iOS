@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import FirebaseAuth
 
 struct ProfileEditView: View {
     @EnvironmentObject var store: HabitStore
@@ -20,6 +21,9 @@ struct ProfileEditView: View {
     @State private var resetMessage: String?
 
     @State private var initialized = false
+
+    // 🔐 Sign-out confirmation
+    @State private var showSignOutConfirm = false
 
     private let shieldAsset = "AppShieldSquare"
 
@@ -98,28 +102,35 @@ struct ProfileEditView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
 
-                    // --- Buttons: Cancel | Save (equal width) ---
+                    // --- Buttons: Cancel | Save (visually identical width) ---
                     HStack(spacing: 12) {
-                        Button("Cancel") {
-                            dismiss()
+                        Button(action: {
+                            if !isLoading { dismiss() }
+                        }) {
+                            Text("Cancel")
+                                .frame(maxWidth: .infinity, minHeight: 48)
                         }
                         .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity, minHeight: 48)
                         .disabled(isLoading)
 
-                        Button {
-                            saveProfile()
-                        } label: {
+                        Button(action: {
+                            if !isLoading { saveProfile() }
+                        }) {
                             if isLoading {
-                                HStack { ProgressView().scaleEffect(0.8); Text("Saving…") }
+                                HStack {
+                                    ProgressView().scaleEffect(0.8)
+                                    Text("Saving…")
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 48)
                             } else {
                                 Text("Save Changes")
+                                    .frame(maxWidth: .infinity, minHeight: 48)
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity, minHeight: 48)
                         .disabled(isLoading)
                     }
+                    .frame(maxWidth: .infinity)
                     .padding(.top, 8)
 
                     // --- Change Password ---
@@ -144,12 +155,13 @@ struct ProfileEditView: View {
                             } label: {
                                 if sendingReset {
                                     HStack { ProgressView().scaleEffect(0.8); Text("Sending…") }
+                                        .frame(maxWidth: .infinity, minHeight: 44)
                                 } else {
                                     Text("Send Password Reset Email")
+                                        .frame(maxWidth: .infinity, minHeight: 44)
                                 }
                             }
                             .buttonStyle(.bordered)
-                            .frame(maxWidth: .infinity, minHeight: 44)
                             .disabled(sendingReset || email.isEmpty)
                         }
                         .padding(.top, 8)
@@ -165,6 +177,30 @@ struct ProfileEditView: View {
                         .padding(.vertical, 6)
                     }
                     .padding(.top, 8)
+
+                    // --- Account / Sign out ---
+                    if Auth.auth().currentUser != nil {
+                        Divider()
+                            .padding(.top, 16)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Account")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Button {
+                                if !isLoading {
+                                    showSignOutConfirm = true
+                                }
+                            } label: {
+                                Text("Sign out")
+                                    .frame(maxWidth: .infinity, minHeight: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(.red.opacity(0.8))
+                        }
+                        .padding(.top, 4)
+                    }
 
                     Spacer(minLength: 24)
                 }
@@ -247,6 +283,16 @@ struct ProfileEditView: View {
                 initialized = true
             }
         }
+        // 🔐 Sign-out confirmation alert
+        .alert("Sign out?", isPresented: $showSignOutConfirm) {
+            Button("Cancel", role: .cancel) {}
+
+            Button("Sign out", role: .destructive) {
+                performSignOut()
+            }
+        } message: {
+            Text("You’ll need to sign in again to access your Journals and Pro features.")
+        }
     }
 
     // MARK: - Helpers
@@ -289,6 +335,27 @@ struct ProfileEditView: View {
             isLoading = false
             dismiss()
         }
+    }
+
+    private func performSignOut() {
+        // Sign out of Firebase
+        do {
+            try Auth.auth().signOut()
+        } catch {
+            // Non-fatal; in practice this should rarely fail
+            print("Sign out error: \(error.localizedDescription)")
+        }
+
+        // Optional: clear local profile registration flag
+        // (journals remain on device; RootView will switch to auth flow because session.user == nil)
+        store.saveProfile(
+            name: store.profile.name ?? "",
+            email: store.profile.email ?? "",
+            photoPath: store.profile.photoPath,
+            isRegistered: false
+        )
+
+        dismiss()
     }
 
     private func sendReset() async {

@@ -13,7 +13,7 @@ final class SessionViewModel: ObservableObject {
     typealias AuthUser = FirebaseAuth.User
 
     @Published var user: AuthUser?
-    @Published var isPro: Bool = false          // legacy flag, derived from `tier`
+    @Published var isPro: Bool = false          // derived from `tier`
     @Published var tier: UserTier = .free       // 3-level entitlements
     @Published var errorMessage: String?
 
@@ -42,11 +42,8 @@ final class SessionViewModel: ObservableObject {
                     self.userListener = self.db.collection("users").document(uid)
                         .addSnapshotListener { [weak self] snap, _ in
                             guard let self else { return }
-                            guard let data = snap?.data() else {
-                                self.applyEntitlementsFromData(nil)
-                                return
-                            }
-                            self.applyEntitlementsFromData(data)
+                            let data = snap?.data()
+                            self.applyEntitlementsFromData(data, uid: uid)
                         }
 
                     // Seed then refresh entitlements
@@ -54,7 +51,7 @@ final class SessionViewModel: ObservableObject {
                     await self.refreshEntitlements()
                 } else {
                     // Signed out → reset entitlements
-                    self.applyEntitlementsFromData(nil)
+                    self.applyEntitlementsFromData(nil, uid: nil)
                 }
             }
         }
@@ -67,7 +64,7 @@ final class SessionViewModel: ObservableObject {
     // MARK: - Entitlement resolution
 
     /// Central place to map Firestore fields -> UserTier + isPro
-    private func applyEntitlementsFromData(_ data: [String: Any]?) {
+    private func applyEntitlementsFromData(_ data: [String: Any]?, uid: String?) {
         let anyTier  = data?["tier"]
         let rawTier  = anyTier as? String
         let tierText = rawTier?
@@ -77,26 +74,29 @@ final class SessionViewModel: ObservableObject {
         let legacyPro = (data?["pro"] as? Bool) == true
 
         #if DEBUG
-        print("Entitlements: raw tier=\(rawTier ?? "nil"), normalized=\(tierText ?? "nil"), hasTier=\(anyTier != nil), legacyPro=\(legacyPro)")
+        print("🔎 Entitlements snapshot for uid=\(uid ?? "nil")")
+        print("   raw tier=\(rawTier ?? "nil"), normalized=\(tierText ?? "nil"), hasTier=\(anyTier != nil), legacyPro=\(legacyPro)")
         #endif
 
         let resolvedTier: UserTier
 
-        if anyTier != nil {
-            // 🔴 IMPORTANT:
-            // If *any* tier is present:
-            // - "pro"  -> Pro
-            // - anything else (including "amateur", typos, or weird strings) -> Amateur
+        if let tierText {
+            // ✅ Exact mapping for known tiers
             switch tierText {
             case "pro":
                 resolvedTier = .pro
-            default:
+            case "amateur":
                 resolvedTier = .amateur
+            case "free":
+                resolvedTier = .free
+            default:
+                // Unknown string → safest default is FREE
+                resolvedTier = .free
             }
         } else {
-            // No tier field at all:
-            // - If legacy pro is true -> Pro
-            // - Otherwise -> Free
+            // No `tier` field at all:
+            // - If legacy pro true → Pro
+            // - Otherwise → Free
             if legacyPro {
                 resolvedTier = .pro
             } else {
@@ -106,6 +106,10 @@ final class SessionViewModel: ObservableObject {
 
         self.tier = resolvedTier
         self.isPro = (resolvedTier == .pro)
+
+        #if DEBUG
+        print("   → resolvedTier=\(resolvedTier) | isPro=\(self.isPro)")
+        #endif
     }
 
     // MARK: - Auth
@@ -134,18 +138,21 @@ final class SessionViewModel: ObservableObject {
 
     func refreshEntitlements() async {
         guard let uid = user?.uid else {
-            applyEntitlementsFromData(nil)
+            applyEntitlementsFromData(nil, uid: nil)
             return
         }
         do {
             let snap = try await db.collection("users").document(uid).getDocument()
             if let data = snap.data() {
-                applyEntitlementsFromData(data)
+                applyEntitlementsFromData(data, uid: uid)
             } else {
-                applyEntitlementsFromData(nil)
+                applyEntitlementsFromData(nil, uid: uid)
             }
         } catch {
-            applyEntitlementsFromData(nil)
+            #if DEBUG
+            print("refreshEntitlements error for uid=\(uid): \(error.localizedDescription)")
+            #endif
+            applyEntitlementsFromData(nil, uid: uid)
         }
     }
 

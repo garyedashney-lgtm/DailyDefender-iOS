@@ -29,27 +29,34 @@ struct MainTabScaffoldView: View {
 
                 case .weekly:
                     if session.tier.canAccessWeeklyAndGoals {
-                        WeeklyView().environmentObject(store)
+                        WeeklyView()
+                            .environmentObject(store)
                     } else {
-                        PaywallCardView(title: "Pro Feature")
+                        // Amateur+ feature
+                        PaywallCardView(title: "Upgrade to Amateur")
                     }
 
                 case .goals:
                     if session.tier.canAccessWeeklyAndGoals {
-                        GoalsView().environmentObject(store)
+                        GoalsView()
+                            .environmentObject(store)
                     } else {
-                        PaywallCardView(title: "Pro Feature")
+                        // Amateur+ feature
+                        PaywallCardView(title: "Upgrade to Amateur")
                     }
 
                 case .journal:
                     if session.tier.canAccessJournal {
-                        JournalHomeView().environmentObject(store)
+                        JournalHomeView()
+                            .environmentObject(store)
                     } else {
-                        PaywallCardView(title: "Pro Feature")
+                        // Pro-only feature
+                        PaywallCardView(title: "Unlock Journals with Pro")
                     }
 
                 case .more:
-                    MoreView().environmentObject(store)
+                    MoreView()
+                        .environmentObject(store)
                 }
             }
             .ignoresSafeArea(.keyboard)
@@ -69,8 +76,10 @@ struct MainTabScaffoldView: View {
 extension UserTier {
     var canAccessWeeklyAndGoals: Bool {
         switch self {
-        case .free: return false
-        case .amateur, .pro: return true
+        case .free:
+            return false
+        case .amateur, .pro:
+            return true
         }
     }
 

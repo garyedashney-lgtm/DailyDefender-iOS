@@ -4,7 +4,7 @@ import SwiftUI
 struct DailyDefenderApp: App {
     // Existing store
     @StateObject private var store = HabitStore()
-    // New: Firebase Auth + allowlist session
+    // Firebase Auth + allowlist session
     @StateObject private var session = SessionViewModel()
 
     // Splash state
@@ -40,10 +40,10 @@ struct DailyDefenderApp: App {
                 // Solid backdrop so there’s no flash between splash/root
                 AppTheme.navy900.ignoresSafeArea()
 
-                // Root is the auth gate (shows your real shell when allowed)
-                AuthGateView()
+                // ✅ Root is now the unified auth + tabs shell
+                RootView()
                     .environmentObject(session)
-                    .environmentObject(store)          // ✅ single shared store
+                    .environmentObject(store)          // single shared store
                     .tint(AppTheme.appGreen)
                     .opacity(rootOpacity)
                     .animation(.easeIn(duration: 1.6), value: rootOpacity) // match spin duration

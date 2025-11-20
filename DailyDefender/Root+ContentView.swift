@@ -2,12 +2,10 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var store: HabitStore
+    @EnvironmentObject var session: SessionViewModel   // 🔹 current user + tier
 
     // Tabs
     @State private var tab: IosPage = .daily
-
-    // First-run sheet (registration or profile completion)
-    @State private var showOnboardingSheet = false
 
     // Post-registration brand splash (spinner)
     @State private var showBrandSplash = false
@@ -20,9 +18,23 @@ struct RootView: View {
         ZStack {
             AppTheme.navy900.ignoresSafeArea()
 
-            // Main content with tabs
-            Content(tab: $tab)
+            // 🔐 Top-level auth gate:
+            // If not signed in, show auth flow only.
+            if session.user == nil {
+                AuthRootView(
+                    onAuthenticated: {
+                        // When auth completes, default to Daily tab
+                        tab = .daily
+                    }
+                )
                 .environmentObject(store)
+                .environmentObject(session)
+            } else {
+                // Signed-in experience: main tabbed app
+                Content(tab: $tab)
+                    .environmentObject(store)
+                    .environmentObject(session)
+            }
 
             // Center toast overlay (independent of keyboard)
             if showToast, let msg = toastMessage {
@@ -39,43 +51,14 @@ struct RootView: View {
                     }
             }
         }
-        .onAppear {
-            // Show sheet if missing name or not registered
-            let p = store.profile
-            showOnboardingSheet =
-                p.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !p.isRegistered
-        }
-        .sheet(isPresented: $showOnboardingSheet) {
-            // Registration flow (Root listens for toast via store.$lastMailchimpMessage)
-            RegistrationView {
-                // Just dismiss; DO NOT set the tab here.
-                // We will switch to Daily only when Mailchimp success flips isRegistered.
-                showOnboardingSheet = false
-            }
-            .environmentObject(store)
-        }
-        // Mailchimp message -> show toast AND, if isRegistered is now true, go to Daily.
+        // 🔔 Mailchimp / registration messages → just show toast
         .onReceive(store.$lastMailchimpMessage.compactMap { $0 }) { msg in
-            let becameRegistered = store.profile.isRegistered  // authoritative success flag
-
-            if showOnboardingSheet {
-                // Dismiss the sheet first, then show toast and switch tab if registered
-                showOnboardingSheet = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    if becameRegistered { tab = .daily }
-                    toastMessage = msg
-                    withAnimation { showToast = true }
-                }
-            } else {
-                if becameRegistered { tab = .daily }
-                toastMessage = msg
-                withAnimation { showToast = true }
-            }
+            toastMessage = msg
+            withAnimation { showToast = true }
         }
         // Listen for one-time post-registration spinner trigger from HabitStore
         .onReceive(store.$revealBrandAfterRegistration) { flag in
             guard flag else { return }
-            // Present spinner, then reset the flag when it dismisses
             showBrandSplash = true
         }
         .fullScreenCover(isPresented: $showBrandSplash, onDismiss: {
@@ -87,10 +70,24 @@ struct RootView: View {
     }
 }
 
-// MARK: - Content wrapper that switches tabs
+// MARK: - Content wrapper that switches tabs (now gated by tier)
+
 private struct Content: View {
     @EnvironmentObject var store: HabitStore
+    @EnvironmentObject var session: SessionViewModel
     @Binding var tab: IosPage
+
+    private var versionName: String {
+        Bundle.main.appVersion
+    }
+
+    private var versionCode: String {
+        Bundle.main.appBuild
+    }
+
+    private var weekKey: String {
+        currentWeekKey()
+    }
 
     var body: some View {
         ZStack {
@@ -100,16 +97,31 @@ private struct Content: View {
                 switch tab {
                 case .daily:
                     DailyView()
+                        .environmentObject(store)
+
                 case .weekly:
-                    WeeklyView()
+                    if session.tier.canAccessWeeklyAndGoals {
+                        WeeklyView()
+                            .environmentObject(store)
+                    } else {
+                        PaywallCardView(title: "Pro Feature")
+                    }
 
                 case .goals:
-                    GoalsView()
-                        .environmentObject(store)
+                    if session.tier.canAccessWeeklyAndGoals {
+                        GoalsView()
+                            .environmentObject(store)
+                    } else {
+                        PaywallCardView(title: "Pro Feature")
+                    }
 
                 case .journal:
-                    JournalHomeView()
-                        .environmentObject(store)
+                    if session.tier.canAccessJournal {
+                        JournalHomeView()
+                            .environmentObject(store)
+                    } else {
+                        PaywallCardView(title: "Pro Feature")
+                    }
 
                 case .more:
                     MoreView()
@@ -121,15 +133,16 @@ private struct Content: View {
             IOSFooterBar(
                 currentPage: tab,
                 onSelectPage: { tab = $0 },
-                versionName: Bundle.main.appVersion,
-                versionCode: Bundle.main.appBuild,
-                weekKey: currentWeekKey()
+                versionName: versionName,
+                versionCode: versionCode,
+                weekKey: weekKey
             )
         }
     }
 }
 
 // MARK: - Simple center toast (keyboard-safe)
+
 private struct CenterToastView: View {
     let message: String
     var body: some View {
@@ -152,6 +165,7 @@ private struct CenterToastView: View {
 }
 
 // MARK: - Placeholders you already had
+
 private struct PlaceholderView: View {
     let title: String
     var body: some View {
@@ -163,6 +177,7 @@ private struct PlaceholderView: View {
         }
     }
 }
+
 private struct GoalsPlaceholderView: View {
     var body: some View {
         ZStack {
