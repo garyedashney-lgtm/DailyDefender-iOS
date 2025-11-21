@@ -32,16 +32,21 @@ struct AuthRootView: View {
                 // - signs in
                 // - saves profile locally
                 // - updates Firestore + entitlements
-                RegistrationView {
-                    Task {
-                        // 🔑 Mirror old AuthGateView behavior:
-                        // ensure the user doc is seeded + entitlements refreshed
-                        await session.runSeedIfNeeded()
-                        await session.refreshEntitlements()
-                        // Then hand control back to RootView
-                        onAuthenticated()
+                RegistrationView(
+                    onRegistered: {
+                        Task {
+                            // 🔑 Mirror old AuthGateView behavior:
+                            // ensure the user doc is seeded + entitlements refreshed
+                            await session.runSeedIfNeeded()
+                            await session.refreshEntitlements()
+                            // Then hand control back to RootView
+                            onAuthenticated()
+                        }
+                    },
+                    onBack: {
+                        screen = .entry
                     }
-                }
+                )
                 .environmentObject(session)
                 .environmentObject(store)
 
@@ -126,6 +131,22 @@ struct AuthEntryView: View {
                                 .frame(maxWidth: .infinity, minHeight: 48)
                         }
                         .buttonStyle(.bordered)
+
+                        // 🔒 App Privacy Manifesto link (shown to everyone on first screen)
+                        NavigationLink {
+                            PrivacyManifestoView()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text("🔒 App Privacy Manifesto")
+                                    .font(.footnote.weight(.semibold))
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .baselineOffset(1)
+                            }
+                            .foregroundStyle(AppTheme.textSecondary)
+                        }
+                        .padding(.top, 8)
                     }
                     .padding(.horizontal, 24)
 
@@ -180,7 +201,10 @@ struct SignInView: View {
                             .padding(12)
                             .background(AppTheme.surfaceUI)
                             .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.25)))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.white.opacity(0.25))
+                            )
                             .foregroundStyle(AppTheme.textPrimary)
                             .disabled(isLoading)
 
@@ -197,7 +221,10 @@ struct SignInView: View {
                             .padding(12)
                             .background(AppTheme.surfaceUI)
                             .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.25)))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .stroke(Color.white.opacity(0.25))
+                            )
                             .foregroundStyle(AppTheme.textPrimary)
 
                             Button(action: { showPassword.toggle() }) {
@@ -228,39 +255,58 @@ struct SignInView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Sign in button
+                        // Sign in button — same size as welcome buttons
                         Button(action: signInTapped) {
                             if isLoading {
-                                HStack { ProgressView().scaleEffect(0.8); Text("Signing in…") }
+                                HStack {
+                                    ProgressView().scaleEffect(0.8)
+                                    Text("Signing in…")
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 48)
                             } else {
                                 Text("Sign in")
+                                    .frame(maxWidth: .infinity, minHeight: 48)
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .tint(AppTheme.appGreen)
                         .disabled(isLoading)
-                        .padding(.top, 6)
+                        .padding(.top, 10)
 
-                        // Back
-                        Button(action: { if !isLoading { onBack() } }) {
-                            Text("Back")
-                                .frame(maxWidth: .infinity, minHeight: 44)
+                        // 🔒 App Privacy Manifesto link (for returning users too)
+                        NavigationLink {
+                            PrivacyManifestoView()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text("🔒 App Privacy Manifesto")
+                                    .font(.footnote.weight(.semibold))
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .baselineOffset(1)
+                            }
+                            .foregroundStyle(AppTheme.textSecondary)
                         }
-                        .buttonStyle(.bordered)
-                        .padding(.top, 4)
+                        .padding(.top, 8)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 20)
+                    .padding(.bottom, 24)
                 }
                 .scrollContentBackground(.hidden)
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { if !isLoading { onBack() } }) {
-                        Image(systemName: "chevron.left")
-                            .foregroundStyle(AppTheme.textPrimary)
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
                     }
                 }
+
                 ToolbarItem(placement: .principal) {
                     Text("Sign in")
                         .font(.headline.weight(.semibold))
@@ -284,32 +330,52 @@ struct SignInView: View {
             return
         }
 
+        // 🔐 SIMPLE ONE-ACCOUNT-PER-DEVICE CHECK:
+        // If we already have a profile email stored on this device,
+        // only that email can sign in here. Anything else is treated
+        // as "Email or password is incorrect." and we do NOT hit Firebase.
+        let localEmail = store.profile.email
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        if !localEmail.isEmpty, e != localEmail {
+            errorText = "Email or password is incorrect."
+            showReset = true   // they can still try password reset for what they typed
+            return
+        }
+
         errorText = nil
         showReset = false
         isLoading = true
 
         Task {
             do {
-                // Pure sign-in using FirebaseAuth
+                // 1) Try to sign in with Firebase
                 try await Auth.auth().signIn(withEmail: e, password: p)
 
-                // Hydrate local profile from FirebaseAuth user
-                if let user = Auth.auth().currentUser {
-                    let displayName = user.displayName ?? ""
-                    let emailLower = user.email ?? e
-
-                    // Journals remain local, but we mark this profile as registered
-                    store.saveProfile(
-                        name: displayName,
-                        email: emailLower,
-                        photoPath: store.profile.photoPath, // keep any existing local photo if present
-                        isRegistered: true
+                guard let user = Auth.auth().currentUser else {
+                    throw NSError(
+                        domain: "Auth",
+                        code: -1,
+                        userInfo: [NSLocalizedDescriptionKey: "No user after sign-in"]
                     )
                 }
 
-                // Refresh entitlements / seed user doc if needed
+                // 2) Hydrate local profile from FirebaseAuth user
+                let displayName = user.displayName ?? ""
+                let emailLower = user.email ?? e
+
+                store.saveProfile(
+                    name: displayName,
+                    email: emailLower,
+                    photoPath: store.profile.photoPath,
+                    isRegistered: true
+                )
+
+                // 3) Entitlements + device registration
                 await session.runSeedIfNeeded()
                 await session.refreshEntitlements()
+                await session.registerCurrentDevice()
 
                 isLoading = false
                 onSignedIn()

@@ -198,6 +198,20 @@ struct ProfileEditView: View {
                             }
                             .buttonStyle(.bordered)
                             .tint(.red.opacity(0.8))
+
+                            // 🔒 Local data note
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: "iphone")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .padding(.top, 2)
+
+                                Text("Your journal entries, goals, and notes remain on this device after you sign out.")
+                                    .font(.footnote)
+                                    .foregroundStyle(AppTheme.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.top, 4)
                         }
                         .padding(.top, 4)
                     }

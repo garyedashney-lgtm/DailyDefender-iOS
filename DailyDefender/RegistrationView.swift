@@ -6,6 +6,7 @@ struct RegistrationView: View {
     @EnvironmentObject var session: SessionViewModel
     @EnvironmentObject var store: HabitStore
     let onRegistered: () -> Void
+    var onBack: () -> Void = { }      // default so older call sites still compile
 
     @State private var name: String = ""
     @State private var email: String = ""
@@ -120,44 +121,58 @@ struct RegistrationView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                        // Continue
+                        // Save & Continue button — cloned style from Welcome screen
                         Button(action: continueTapped) {
                             if isLoading {
-                                HStack { ProgressView().scaleEffect(0.8); Text("Working…") }
+                                HStack {
+                                    ProgressView().scaleEffect(0.8)
+                                    Text("Working…")
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 48)
                             } else {
                                 Text("Save & Continue")
+                                    .frame(maxWidth: .infinity, minHeight: 48)
                             }
                         }
                         .buttonStyle(.borderedProminent)
-                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .tint(AppTheme.appGreen)   // 👈 same green as Create account
                         .disabled(isLoading)
-                        .padding(.top, 6)
+                        .padding(.top, 10)
+
+                        // 🔒 App Privacy Manifesto link
+                        NavigationLink {
+                            PrivacyManifestoView()
+                        } label: {
+                            HStack(spacing: 6) {
+                                Text("🔒 App Privacy Manifesto")
+                                    .font(.footnote.weight(.semibold))
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .baselineOffset(1)
+                            }
+                            .foregroundStyle(AppTheme.textSecondary)
+                        }
+                        .disabled(isLoading)
+                        .padding(.top, 4)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 20)
+                    .padding(.bottom, 24)
                 }
                 .scrollContentBackground(.hidden) // let navy show through
             }
             .toolbar {
-                // LEFT — app shield
+                // LEFT — Back to entry (instead of shield)
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Group {
-                        if UIImage(named: "AppShieldSquare") != nil {
-                            Image("AppShieldSquare")
-                                .resizable()
-                                .scaledToFit()
-                        } else {
-                            Image(systemName: "shield.lefthalf.filled")
-                                .resizable()
-                                .scaledToFit()
+                    Button(action: { if !isLoading { onBack() } }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
                         }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.textPrimary)
                     }
-                    .frame(width: 36, height: 36)
-                    .clipShape(Circle())
-                    .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
-                    .padding(4)
-                    .offset(y: -2)
-                    .accessibilityLabel("App")
                 }
 
                 // CENTER — title
@@ -240,6 +255,7 @@ struct RegistrationView: View {
             // Seed/entitlements
             await session.runSeedIfNeeded()
             await session.refreshEntitlements()
+            await session.registerCurrentDevice()
 
             isLoading = false
             onRegistered()

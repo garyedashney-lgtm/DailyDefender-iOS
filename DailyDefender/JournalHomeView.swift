@@ -85,14 +85,36 @@ struct JournalHomeView: View {
                             onSearch()
                         }
 
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.icloud")
-                                .foregroundStyle(AppTheme.appGreen)
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Your journals are saved on this device and included in iCloud backups.")
-                                .font(.footnote)
-                                .foregroundStyle(AppTheme.textSecondary)
-                            Spacer()
+                        VStack(alignment: .leading, spacing: 4) {
+
+                            // Existing iCloud note
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.icloud")
+                                    .foregroundStyle(AppTheme.appGreen)
+                                    .font(.system(size: 14, weight: .semibold))
+
+                                Text("Your journals are saved on this device and included in iCloud backups.")
+                                    .font(.footnote)
+                                    .foregroundStyle(AppTheme.textSecondary)
+
+                                Spacer()
+                            }
+
+                            // NEW: App Privacy Manifesto link
+                            NavigationLink {
+                                PrivacyManifestoView()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text("🔒 App Privacy Manifesto")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(AppTheme.textSecondary)
+
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(AppTheme.textSecondary.opacity(0.6))
+                                }
+                                .padding(.top, 2)
+                            }
                         }
                         .padding(.horizontal, 4)
                         .padding(.vertical, 6)

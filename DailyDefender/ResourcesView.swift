@@ -17,6 +17,7 @@ struct ResourcesView: View {
     @State private var expandSFPC      = false
     @State private var expandQuadCourse = false
     @State private var expandATM       = false
+    @State private var expandPrivacy  = false
     @State private var expandBookCall  = false
 
     // Use project’s square shield (falls back if missing)
@@ -134,6 +135,38 @@ struct ResourcesView: View {
                                 assetName: "ic_advisortomen",
                                 subtitle: "Courses, private coaching, articles & more"
                             )
+                        }
+                        
+                        // === App Privacy Manifesto ===
+                        CollapsibleSection(title: "🔒 App Privacy Manifesto", isExpanded: $expandPrivacy) {
+                            NavigationLink {
+                                PrivacyManifestoView()
+                            } label: {
+                                HStack(alignment: .center, spacing: 10) {
+                                    Image(systemName: "lock.shield")
+                                        .resizable()
+                                        .scaledToFit()
+                                        .frame(width: 22, height: 22)
+                                        .foregroundStyle(AppTheme.appGreen)
+                                        .padding(2)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("View the full App Privacy Manifesto")
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundStyle(AppTheme.appGreen)
+                                            .underline()
+
+                                        Text("How your journals, goals, stats, and account data are handled.")
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(AppTheme.textSecondary)
+                                    }
+
+                                    Spacer()
+                                }
+                                .padding(.vertical, 8)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
                         }
 
                         // === Book a Call with Advisor to Men™ ===

@@ -38,6 +38,16 @@ final class SessionViewModel: ObservableObject {
                 self.userListener = nil
 
                 if let uid = user?.uid {
+
+                    // 🧷 One-account-per-device: if this device has never been bound,
+                    // bind it now to the first uid we see.
+                    if DeviceBindingManager.shared.boundUid == nil {
+                        DeviceBindingManager.shared.boundUid = uid
+                        #if DEBUG
+                        print("📌 DeviceBindingManager: bound this device to uid=\(uid)")
+                        #endif
+                    }
+
                     // Live listen to entitlement flips (tier + legacy pro)
                     self.userListener = self.db.collection("users").document(uid)
                         .addSnapshotListener { [weak self] snap, _ in
