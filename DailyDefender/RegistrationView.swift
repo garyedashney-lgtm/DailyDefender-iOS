@@ -1,13 +1,14 @@
 import SwiftUI
 import PhotosUI
 import FirebaseFirestore
+import FirebaseAuth
 
 struct RegistrationView: View {
     @EnvironmentObject var session: SessionViewModel
     @EnvironmentObject var store: HabitStore
     let onRegistered: () -> Void
     var onBack: () -> Void = { }      // default so older call sites still compile
-
+    
     @State private var name: String = ""
     @State private var email: String = ""
     @State private var password: String = ""
@@ -15,21 +16,21 @@ struct RegistrationView: View {
     @State private var isLoading = false
     @State private var showPassword = false
     @State private var showReset = false
-
+    
     @State private var photoItem: PhotosPickerItem?
     @State private var photoData: Data?
     @State private var photoUri: String?
-
+    
     @State private var initialized = false
-
+    
     var body: some View {
         NavigationStack {
             ZStack {
                 AppTheme.navy900.ignoresSafeArea()
-
+                
                 ScrollView {
                     VStack(spacing: 18) {
-
+                        
                         // Avatar (tap to pick a photo)
                         PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
                             ZStack {
@@ -52,7 +53,7 @@ struct RegistrationView: View {
                             }
                         }
                         .disabled(isLoading)
-
+                        
                         // Name
                         TextField("Name", text: $name)
                             .textInputAutocapitalization(.words)
@@ -63,7 +64,7 @@ struct RegistrationView: View {
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.25)))
                             .foregroundStyle(AppTheme.textPrimary)
                             .disabled(isLoading)
-
+                        
                         // Email
                         TextField("Email", text: $email)
                             .textInputAutocapitalization(.never)
@@ -76,7 +77,7 @@ struct RegistrationView: View {
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.25)))
                             .foregroundStyle(AppTheme.textPrimary)
                             .disabled(isLoading)
-
+                        
                         // Password + eye toggle
                         ZStack(alignment: .trailing) {
                             Group {
@@ -92,7 +93,7 @@ struct RegistrationView: View {
                             .cornerRadius(10)
                             .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.25)))
                             .foregroundStyle(AppTheme.textPrimary)
-
+                            
                             Button(action: { showPassword.toggle() }) {
                                 Image(systemName: showPassword ? "eye.slash" : "eye")
                                     .foregroundStyle(AppTheme.textSecondary)
@@ -100,7 +101,7 @@ struct RegistrationView: View {
                             }
                         }
                         .disabled(isLoading)
-
+                        
                         // Error + reset link
                         VStack(alignment: .leading, spacing: 6) {
                             if let e = errorText {
@@ -120,7 +121,7 @@ struct RegistrationView: View {
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-
+                        
                         // Save & Continue button — cloned style from Welcome screen
                         Button(action: continueTapped) {
                             if isLoading {
@@ -138,7 +139,7 @@ struct RegistrationView: View {
                         .tint(AppTheme.appGreen)   // 👈 same green as Create account
                         .disabled(isLoading)
                         .padding(.top, 10)
-
+                        
                         // 🔒 App Privacy Manifesto link
                         NavigationLink {
                             PrivacyManifestoView()
@@ -146,7 +147,7 @@ struct RegistrationView: View {
                             HStack(spacing: 6) {
                                 Text("🔒 App Privacy Manifesto")
                                     .font(.footnote.weight(.semibold))
-
+                                
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 9, weight: .semibold))
                                     .baselineOffset(1)
@@ -174,7 +175,7 @@ struct RegistrationView: View {
                         .foregroundStyle(AppTheme.textPrimary)
                     }
                 }
-
+                
                 // CENTER — title
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 4) {
@@ -207,7 +208,7 @@ struct RegistrationView: View {
             }
         }
     }
-
+    
     private func continueTapped() {
         guard !isLoading else { return }
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -222,6 +223,16 @@ struct RegistrationView: View {
         isLoading = true
 
         Task {
+            // 🔐 1) Device binding guard BEFORE touching Firebase
+            let binding = DeviceBindingManagerIOS()
+            if let _ = binding.getDeviceOwnerUid() {
+                // Device is already claimed → block registration
+                errorText = "This device is already registered to another account."
+                isLoading = false
+                return
+            }
+
+            // 2) Sign in or register with Firebase via SessionViewModel
             let signedIn = await session.signInOrRegister(email: e, password: password)
             if !signedIn {
                 showReset = true
@@ -229,11 +240,21 @@ struct RegistrationView: View {
                 return
             }
 
-            // Persist local profile & mark registered
+            // 3) Bind this device to the new UID
+            guard let uid = session.user?.uid ?? Auth.auth().currentUser?.uid else {
+                errorText = "Could not complete sign-in. Please try again."
+                isLoading = false
+                return
+            }
+
+            // First account ever on this device → claim it
+            binding.setDeviceOwnerUid(uid)
+
+            // 4) Persist local profile & mark registered
             let finalPhoto = photoUri
             store.saveProfile(name: n, email: e, photoPath: finalPhoto, isRegistered: true)
 
-            // Push name/photo to Auth + Firestore (your helpers)
+            // 5) Push name/photo to Auth + Firestore (your helpers)
             await session.updateAuthProfile(displayName: n, photoURLString: finalPhoto)
             await session.upsertUserDoc(name: n, email: e, photoURLString: finalPhoto)
 
@@ -252,7 +273,7 @@ struct RegistrationView: View {
                 ])
             }
 
-            // Seed/entitlements
+            // 6) Seed/entitlements + server-side device registration
             await session.runSeedIfNeeded()
             await session.refreshEntitlements()
             await session.registerCurrentDevice()
@@ -261,7 +282,7 @@ struct RegistrationView: View {
             onRegistered()
         }
     }
-
+    
     private func sendReset() {
         let e = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard isValidEmail(e) else {
@@ -277,18 +298,18 @@ struct RegistrationView: View {
             }
         }
     }
-
+    
     private func isValidEmail(_ s: String) -> Bool {
         s.contains("@") && s.contains(".") && !s.hasPrefix("@") && !s.hasSuffix("@")
     }
-
+    
     private func initials(from name: String) -> String {
         let parts = name.split(separator: " ")
         let first = parts.first?.first.map(String.init) ?? "D"
         let second = parts.dropFirst().first?.first.map(String.init) ?? "D"
         return first + second
     }
-
+    
     private func savePhotoToDocuments(_ image: UIImage) -> String? {
         guard let data = image.jpegData(compressionQuality: 0.9) else { return nil }
         let filename = UUID().uuidString + ".jpg"

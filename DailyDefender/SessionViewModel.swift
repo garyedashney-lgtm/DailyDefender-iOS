@@ -156,13 +156,13 @@ final class SessionViewModel: ObservableObject {
             if let data = snap.data() {
                 applyEntitlementsFromData(data, uid: uid)
             } else {
-                applyEntitlementsFromData(nil, uid: uid)
+                applyEntitlementsFromData(nil, uid: nil)
             }
         } catch {
             #if DEBUG
             print("refreshEntitlements error for uid=\(uid): \(error.localizedDescription)")
             #endif
-            applyEntitlementsFromData(nil, uid: uid)
+            applyEntitlementsFromData(nil, uid: nil)
         }
     }
 
@@ -294,6 +294,27 @@ final class SessionViewModel: ObservableObject {
         } catch {
             #if DEBUG
             print("mergeUserDoc error: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    // MARK: - Leaderboard totals sync (phone → Firestore)
+
+    /// Sync leaderboard totals in Firestore from the device's current local view
+    /// (7 / 30 / 60-day totals). Phone is the source of truth; Firestore is just a snapshot.
+    func syncTotalsFromLocal(_ totals: TripleWindow) async {
+        guard let uid = user?.uid else { return }
+
+        do {
+            try await db.collection("users").document(uid).setData([
+                "total7": totals.d7,
+                "total30": totals.d30,
+                "total60": totals.d60,
+                "updatedAt": Timestamp(date: Date())
+            ], merge: true)
+        } catch {
+            #if DEBUG
+            print("syncTotalsFromLocal failed: \(error.localizedDescription)")
             #endif
         }
     }

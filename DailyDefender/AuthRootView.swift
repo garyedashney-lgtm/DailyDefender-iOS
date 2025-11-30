@@ -319,6 +319,8 @@ struct SignInView: View {
         }
     }
 
+    // MARK: - Logic
+
     private func signInTapped() {
         guard !isLoading else { return }
 
@@ -330,27 +332,26 @@ struct SignInView: View {
             return
         }
 
-        // 🔐 SIMPLE ONE-ACCOUNT-PER-DEVICE CHECK:
-        // If we already have a profile email stored on this device,
-        // only that email can sign in here. Anything else is treated
-        // as "Email or password is incorrect." and we do NOT hit Firebase.
+        // 🔐 Local one-account-per-device guard (email-based)
         let localEmail = store.profile.email
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
 
         if !localEmail.isEmpty, e != localEmail {
-            errorText = "Email or password is incorrect."
-            showReset = true   // they can still try password reset for what they typed
+            // This device already has a bound account; don't even hit Firebase
+            errorText = "This device is already registered to another account."
+            showReset = false
             return
         }
 
+        // No more pure local-email gate – but we still have UID binding below
         errorText = nil
         showReset = false
         isLoading = true
 
         Task {
             do {
-                // 1) Try to sign in with Firebase
+                // 1) Sign in with Firebase
                 try await Auth.auth().signIn(withEmail: e, password: p)
 
                 guard let user = Auth.auth().currentUser else {
@@ -361,18 +362,38 @@ struct SignInView: View {
                     )
                 }
 
-                // 2) Hydrate local profile from FirebaseAuth user
+                let uid = user.uid
+
+                // 2) Enforce one-account-per-device by UID (backup guard)
+                let binding = DeviceBindingManagerIOS()
+                if let deviceOwner = binding.getDeviceOwnerUid() {
+                    if deviceOwner != uid {
+                        // Different user trying to claim this device → block
+                        try? Auth.auth().signOut()
+                        errorText = "This device is already registered to another account."
+                        showReset = false
+                        isLoading = false
+                        return
+                    }
+                } else {
+                    // First account on this device → claim it
+                    binding.setDeviceOwnerUid(uid)
+                }
+
+                // 3) Hydrate local profile
                 let displayName = user.displayName ?? ""
-                let emailLower = user.email ?? e
+                let emailLower = (user.email ?? e)
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
 
                 store.saveProfile(
-                    name: displayName,
+                    name: displayName.isEmpty ? store.profile.name ?? "" : displayName,
                     email: emailLower,
                     photoPath: store.profile.photoPath,
                     isRegistered: true
                 )
 
-                // 3) Entitlements + device registration
+                // 4) Entitlements + device registration (server-side binding)
                 await session.runSeedIfNeeded()
                 await session.refreshEntitlements()
                 await session.registerCurrentDevice()
@@ -380,6 +401,9 @@ struct SignInView: View {
                 isLoading = false
                 onSignedIn()
             } catch {
+                let nsError = error as NSError
+                print("🔥 signIn error:", nsError.localizedDescription, "rawCode=\(nsError.code)")
+
                 errorText = "Email or password is incorrect."
                 showReset = true
                 isLoading = false
@@ -397,14 +421,31 @@ struct SignInView: View {
         Task {
             do {
                 try await session.sendPasswordReset(to: e)
-                errorText = nil
+                errorText = "If \(e) is registered, we’ve emailed instructions to reset your password."
+                // you can optionally keep showReset = true so they can tap again
             } catch {
-                errorText = "Email or password is incorrect."
+                let nsError = error as NSError
+                print("🔥 sendPasswordReset error:", nsError.localizedDescription, "rawCode=\(nsError.code)")
+                errorText = "We couldn't send a reset email. Please double-check the address."
             }
         }
     }
 
     private func isValidEmail(_ s: String) -> Bool {
         s.contains("@") && s.contains(".") && !s.hasPrefix("@") && !s.hasSuffix("@")
+    }
+}
+
+// MARK: - Device Binding Helper (iOS)
+
+final class DeviceBindingManagerIOS {
+    private let key = "deviceOwnerUid_ios"
+
+    func getDeviceOwnerUid() -> String? {
+        UserDefaults.standard.string(forKey: key)
+    }
+
+    func setDeviceOwnerUid(_ uid: String) {
+        UserDefaults.standard.set(uid, forKey: key)
     }
 }

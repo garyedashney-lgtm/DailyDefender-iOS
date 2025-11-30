@@ -52,7 +52,7 @@ private struct SharePayload: Identifiable {
 
 // MARK: - Type classification (Android parity)
 enum JournalTypeIOS: CaseIterable {
-    case tenR, cage, gratitude, selfCare, blessingTally, free, css, dvs
+    case tenR, cage, gratitude, selfCare, blessingTally, free, css, dvs, wcs
 }
 
 private func pillCode(_ t: JournalTypeIOS) -> String {
@@ -65,6 +65,7 @@ private func pillCode(_ t: JournalTypeIOS) -> String {
     case .free: return "FREE"
     case .css: return "CSS"
     case .dvs: return "DVS"
+    case .wcs: return "WCS"
     }
 }
 private func displayName(_ t: JournalTypeIOS) -> String {
@@ -77,6 +78,7 @@ private func displayName(_ t: JournalTypeIOS) -> String {
     case .free: return "Free Flow"
     case .css: return "Current State Snapshot"
     case .dvs: return "Destiny Vision Snapshot"
+    case .wcs: return "Weekly Check-In Snapshot"
     }
 }
 private func pillEmoji(_ t: JournalTypeIOS) -> String {
@@ -148,6 +150,18 @@ private func looksLikeDestinyVisionSnapshot(_ title: String, _ content: String) 
     let hdr = #"(?m)^\s*🚀\s*Destiny Vision\s*—\s*Snapshot\s*\("#
     return content.range(of: hdr, options: .regularExpression) != nil
 }
+private func looksLikeWeeklyCheckInSnapshot(_ title: String, _ content: String) -> Bool {
+    let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if hasPrefixCI(t, "WCS:")
+        || hasPrefixCI(t, "Weekly Check-In Snapshot")
+        || hasPrefixCI(t, "Weekly Check-In — Snapshot") {
+        return true
+    }
+
+    let hdr = #"(?m)^\s*📅\s*Weekly Check-In\s*Snapshot\s*\("#
+    return content.range(of: hdr, options: .regularExpression) != nil
+}
 
 private func classifyJournalType(_ e: JournalEntryIOS) -> JournalTypeIOS {
     let title = e.title
@@ -155,15 +169,18 @@ private func classifyJournalType(_ e: JournalEntryIOS) -> JournalTypeIOS {
 
     if looksLikeCurrentStateSnapshot(title, content) { return .css }
     if looksLikeDestinyVisionSnapshot(title, content) { return .dvs }
+    if looksLikeWeeklyCheckInSnapshot(title, content) { return .wcs }
     if looksLikeTenR(title, content) { return .tenR }
     if looksLikeCageTheWolf(content) { return .cage }
     if looksLikeSelfCareWriting(content) || hasPrefixCI(title, "Self Care Writing") { return .selfCare }
     if looksLikeBlessingTally(content) { return .blessingTally }
-    if hasPrefixCI(title, "Gratitude") || content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("Today, I am grateful for:") {
+    if hasPrefixCI(title, "Gratitude")
+        || content.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("Today, I am grateful for:") {
         return .gratitude
     }
     return .free
 }
+
 
 // MARK: - Sort key
 private enum SortKey { case updated, created, title }

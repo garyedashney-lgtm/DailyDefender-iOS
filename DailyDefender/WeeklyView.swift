@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - WeeklyView (Daily-style input; bullets removed)
+// MARK: - WeeklyView (bulleted, WCS snapshot to Journal)
 struct WeeklyView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
@@ -61,8 +61,8 @@ struct WeeklyView: View {
     // UI
     @State private var showShield = false
     @State private var goProfileEdit = false
-    @State private var showClearAlert = false
     @State private var didHydrateOnce = false
+    @State private var showSavedAlert = false
 
     // Focus state for auto-scrolling & headroom
     @State private var anyEditorFocused = false
@@ -213,11 +213,12 @@ struct WeeklyView: View {
                             }
                         )
 
-                        // === Clear / Share row ===
+                        // === Share / Save to Journal row ===
                         Section {
                             HStack(spacing: 12) {
-                                Button(action: { showClearAlert = true }) {
-                                    Text("Clear All")
+                                // SHARE BUTTON
+                                Button(action: shareWeeklySummary) {
+                                    Text("Share")
                                         .foregroundStyle(AppTheme.textPrimary)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 10)
@@ -232,19 +233,17 @@ struct WeeklyView: View {
 
                                 Spacer(minLength: 12)
 
-                                Button(action: shareWeeklySummary) {
-                                    Text("Share")
-                                        .foregroundStyle(AppTheme.textPrimary)
+                                // SAVE TO JOURNAL (WCS snapshot)
+                                Button(action: { saveWeeklySnapshotToJournal() }) {
+                                    Text("Save to Journal")
+                                        .foregroundStyle(.white)
                                         .padding(.horizontal, 16)
                                         .padding(.vertical, 10)
+                                        .background(AppTheme.appGreen)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                                 }
                                 .buttonStyle(.plain)
-                                .background(AppTheme.navy900)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(AppTheme.textPrimary.opacity(0.35), lineWidth: 1)
-                                )
+                                .accessibilityLabel("Save Weekly Check-In snapshot to Journal Library")
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -291,9 +290,12 @@ struct WeeklyView: View {
                                 .font(.headline.weight(.bold))
                                 .foregroundStyle(AppTheme.textPrimary)
                         }
-                        Text("Week: \(weekKey)")
+                        Text("Scoring: last 7 days")
                             .font(.caption)
                             .foregroundStyle(AppTheme.textPrimary)
+                        Text("Notes: reset weekly (Sun night)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.textSecondary)
                             .padding(.bottom, 6)
                     }
                 }
@@ -334,12 +336,6 @@ struct WeeklyView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
                 flushAll()
             }
-            .alert("Clear all weekly notes?", isPresented: $showClearAlert) {
-                Button("Clear All", role: .destructive) { clearAll() }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("This will remove all text in Weekly for week \(weekKey).")
-            }
 
             // Debounced persistence on change
             .onChange(of: winsLosses)       { _ in scheduleSave() }
@@ -357,6 +353,10 @@ struct WeeklyView: View {
                     .environmentObject(store)
                     .environmentObject(session)
             }.hidden()
+
+            .alert("Saved to Journal ✅", isPresented: $showSavedAlert) {
+                Button("OK", role: .cancel) {}
+            }
         }
     }
 
@@ -614,6 +614,58 @@ struct WeeklyView: View {
         let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
         UIApplication.shared.firstKeyWindow?.rootViewController?.present(av, animated: true)
     }
+
+    // MARK: - Save Weekly snapshot to Journal (WCS, read-only)
+    private func saveWeeklySnapshotToJournal() {
+        let now = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        let stamp = formatter.string(from: now)
+
+        func block(_ header: String, _ text: String) -> String {
+            let cleaned = text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .map { "- \($0)" }
+                .joined(separator: "\n")
+
+            return cleaned.isEmpty ? "\(header)\n" : "\(header)\n\(cleaned)\n"
+        }
+
+        let carryStatus = carryDone ? "DONE!" : "NOT DONE"
+
+        let body = [
+            "📅 Weekly Check-In Snapshot (\(stamp))",
+            "Week: \(weekKey)",
+            "Core Points: \(displayCoreTotal)/\(weeklyTotalCap)",
+            "🏋 Physiology: \(physCount)/\(perPillarCap)",
+            "🙏 Piety: \(pietyCount)/\(perPillarCap)",
+            "👥 People: \(peopleCount)/\(perPillarCap)",
+            "💼 Production: \(prodCount)/\(perPillarCap)",
+            "",
+            block("⚖️ Wins / Losses", winsLosses),
+            block("🏋 Physiology Notes", phys),
+            block("🙏 Piety Notes", prayer),
+            block("👥 People Notes", people),
+            block("💼 Production Notes", production),
+            block("🎯 This Week’s One Thing (\(carryStatus))", carryText),
+            block("🎯 One Thing Next Week", oneThingNextWeek),
+            block("📓 Extra Notes", journalNotes)
+        ]
+        .joined(separator: "\n")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        JournalMemoryStore.shared.addFreeFlow(
+            title: "WCS: Weekly Check-In Snapshot: \(weekKey)",
+            body: body,
+            createdAt: now
+        )
+
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        showSavedAlert = true
+    }
 }
 
 // MARK: - One-line header
@@ -647,8 +699,8 @@ private struct OneLineHeaderRow<Trailing: View>: View {
     }
 }
 
-// MARK: - Notes card (auto-grow + wrap)
-private struct BulletNotesCard: View { // name kept to avoid other ref changes
+// MARK: - Notes card (auto-grow + bullet column)
+private struct BulletNotesCard: View {
     @Binding var text: String
     let placeholder: String
     var onFocusChange: ((Bool) -> Void)? = nil
@@ -660,32 +712,59 @@ private struct BulletNotesCard: View { // name kept to avoid other ref changes
         self.onFocusChange = onFocusChange
     }
 
+    private var lineCount: Int {
+        max(text.split(separator: "\n", omittingEmptySubsequences: false).count, 1)
+    }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AppTheme.surfaceUI)
 
-            BulletTextViewSimple(
-                text: $text,
-                placeholder: placeholder,
-                onHeightChange: { h in
-                    let clamped = max(46, ceil(h))
-                    if abs(clamped - measuredHeight) > 0.5 { measuredHeight = clamped }
-                },
-                onFocusChange: onFocusChange
-            )
-            .frame(height: measuredHeight)
-            .background(Color.clear)
+            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(placeholder)
+                    .font(.callout.italic())
+                    .foregroundStyle(AppTheme.textSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .allowsHitTesting(false)
+            }
+
+            HStack(alignment: .top, spacing: 8) {
+                // Bullet column (logical lines, not wraps)
+                VStack(alignment: .trailing, spacing: 4) {
+                    ForEach(0..<lineCount, id: \.self) { _ in
+                        Text("•")
+                            .font(.body)
+                            .foregroundStyle(AppTheme.textPrimary)
+                            .frame(height: 18, alignment: .top)
+                    }
+                }
+                .padding(.top, 10)
+                .padding(.leading, 8)
+
+                WeeklyAutoGrowTextView(
+                    text: $text,
+                    onHeightChange: { h in
+                        let clamped = max(46, ceil(h))
+                        if abs(clamped - measuredHeight) > 0.5 { measuredHeight = clamped }
+                    },
+                    onFocusChange: onFocusChange
+                )
+                .frame(height: measuredHeight)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 8)
+                .padding(.vertical, 4)
+            }
         }
         .padding(.horizontal, 0)
         .padding(.bottom, 4)
     }
 }
 
-// MARK: - UITextView wrapper — paragraph spacing on Return, bullets removed
-private struct BulletTextViewSimple: UIViewRepresentable {
+// MARK: - UITextView wrapper (auto-grow, sentences, no bullets in text)
+private struct WeeklyAutoGrowTextView: UIViewRepresentable {
     @Binding var text: String
-    var placeholder: String
     var onHeightChange: (CGFloat) -> Void
     var onFocusChange: ((Bool) -> Void)?
 
@@ -698,10 +777,9 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         tv.isScrollEnabled = false
         tv.keyboardDismissMode = .interactive
         tv.textContainer.lineFragmentPadding = 0
-        tv.textContainerInset = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
+        tv.textContainerInset = UIEdgeInsets(top: 10, left: 0, bottom: 10, right: 0)
         tv.textContainer.widthTracksTextView = true
         tv.textContainer.lineBreakMode = .byWordWrapping
-        tv.contentInset = .zero
         tv.autocorrectionType = .yes
         tv.autocapitalizationType = .sentences
         tv.smartDashesType = .no
@@ -709,24 +787,7 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         tv.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         tv.setContentHuggingPriority(.defaultLow, for: .horizontal)
         tv.delegate = context.coordinator
-
-        // Placeholder label
-        let label = UILabel()
-        label.text = placeholder.lowercased()
-        label.textColor = UIColor.white.withAlphaComponent(0.35)
-        label.font = tv.font
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        tv.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: tv.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: tv.trailingAnchor, constant: -8),
-            label.topAnchor.constraint(equalTo: tv.topAnchor, constant: 10)
-        ])
-        context.coordinator.placeholderLabel = label
-
         tv.text = text
-        label.isHidden = !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
         DispatchQueue.main.async { self.remeasure(tv) }
         return tv
@@ -736,54 +797,27 @@ private struct BulletTextViewSimple: UIViewRepresentable {
         if uiView.text != text {
             uiView.text = text
         }
-        context.coordinator.placeholderLabel?.isHidden =
-            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         DispatchQueue.main.async { self.remeasure(uiView) }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
     final class Coordinator: NSObject, UITextViewDelegate {
-        var parent: BulletTextViewSimple
-        weak var placeholderLabel: UILabel?
-
-        init(_ parent: BulletTextViewSimple) { self.parent = parent }
+        var parent: WeeklyAutoGrowTextView
+        init(_ parent: WeeklyAutoGrowTextView) { self.parent = parent }
 
         func textViewDidBeginEditing(_ textView: UITextView) {
-            // Focus only
-            placeholderLabel?.isHidden = true
             parent.onFocusChange?(true)
             parent.remeasure(textView)
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
-            let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            placeholderLabel?.isHidden = !trimmed.isEmpty
             parent.onFocusChange?(false)
             parent.remeasure(textView)
         }
 
-        func textView(_ textView: UITextView,
-                      shouldChangeTextIn range: NSRange,
-                      replacementText repl: String) -> Bool {
-            // Paragraph spacing: convert single Return into blank-line Return
-            if repl == "\n" {
-                let ns = textView.text as NSString? ?? ""
-                let replaced = ns.replacingCharacters(in: range, with: "\n\n")
-                textView.text = replaced
-                textView.selectedRange = NSRange(location: range.location + 2, length: 0)
-                parent.text = replaced
-                placeholderLabel?.isHidden = true
-                parent.remeasure(textView)
-                return false
-            }
-            return true
-        }
-
         func textViewDidChange(_ textView: UITextView) {
             parent.text = textView.text ?? ""
-            let trimmed = textView.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            placeholderLabel?.isHidden = !trimmed.isEmpty
             parent.remeasure(textView)
         }
     }
@@ -791,14 +825,15 @@ private struct BulletTextViewSimple: UIViewRepresentable {
     fileprivate func remeasure(_ tv: UITextView) {
         var targetWidth = tv.bounds.width
         if targetWidth <= 0 {
-            targetWidth = UIScreen.main.bounds.width - 32
+            // leave room for bullets + padding
+            targetWidth = UIScreen.main.bounds.width - 32 - 20
         }
         let size = tv.sizeThatFits(CGSize(width: targetWidth, height: .greatestFiniteMagnitude))
         onHeightChange(size.height)
     }
 }
 
-// MARK: - CheckSquare (matches Daily)
+// MARK: - CheckSquare (matches Daily-ish)
 private struct CheckSquare: View {
     let checked: Bool
     let onTap: () -> Void
@@ -838,21 +873,6 @@ private extension UIApplication {
             .compactMap { $0 as? UIWindowScene }
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }
-    }
-}
-
-private func pillarSubtitle(forLabel label: String) -> String {
-    switch label.lowercased() {
-    case "physiology":
-        return "The body is the universal address of your existence"
-    case "piety":
-        return "Using mystery & awe as the spirit speaks for the soul"
-    case "people":
-        return "Team Human: herd animals who exist in each other"
-    case "production":
-        return "A man produces more than he consumes"
-    default:
-        return ""
     }
 }
 

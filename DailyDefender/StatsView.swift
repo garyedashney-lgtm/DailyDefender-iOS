@@ -246,18 +246,21 @@ struct StatsView: View {
         squadError = nil
 
         Task {
-            // 1) Compute local totals for current user (from device snapshots)
-            let localTotals = await MainActor.run {
-                self.computeLocalTotalsForCurrentUser()
-            }
-            let currentUid = await MainActor.run {
-                self.session.user?.uid
-            }
+                    // 1) Compute local totals for current user (from device snapshots)
+                    let localTotals = await MainActor.run {
+                        self.computeLocalTotalsForCurrentUser()
+                    }
+                    let currentUid = await MainActor.run {
+                        self.session.user?.uid
+                    }
 
-            do {
-                let db = session.db
-                let usersRef = db.collection("users")
-                let squadsRef = db.collection("squads")
+                    // 1b) Phone → Firestore: keep server snapshot in sync with device
+                    await session.syncTotalsFromLocal(localTotals)
+
+                    do {
+                        let db = session.db
+                        let usersRef = db.collection("users")
+                        let squadsRef = db.collection("squads")
 
                 // --- 2) Pull up to 500 Pro users ---
                 let proSnapshot = try await usersRef
