@@ -69,7 +69,7 @@ private struct FeedbackSection: View {
         .sheet(isPresented: $showShareSheet) {
             let body =
             """
-            Feedback for ATM 10MM App
+            Feedback for ATM Defender App
             v\(versionName) (\(versionCode))
 
             \(feedbackText)

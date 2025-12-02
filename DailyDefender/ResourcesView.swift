@@ -69,6 +69,13 @@ struct ResourcesView: View {
                                 assetName: "ic_youtube",
                                 subtitle: nil
                             )
+                            // NEW: Shorts playlist
+                            ResourceLinkRow(
+                                label: "Advisor to Men — YouTube Shorts",
+                                url: "https://www.youtube.com/@advisortomen10MM/shorts",
+                                assetName: "ic_youtube",
+                                subtitle: "Fast-hit shorts and clips from Wallace"
+                            )
                         }
 
                         // === Private FB Support Groups ===
@@ -333,6 +340,7 @@ private struct CollapsibleSection<Content: View>: View {
         .accessibilityLabel(Text(title))
     }
 }
+
 // MARK: - Resource Link Row (flat style, no trailing arrow, no card)
 private struct ResourceLinkRow: View {
     let label: String

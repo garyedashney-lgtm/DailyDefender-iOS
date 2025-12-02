@@ -30,7 +30,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		2F78B0512E750314002F81F0 /* ATM 10MM App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ATM 10MM App.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2F78B0512E750314002F81F0 /* ATM Defender.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "ATM Defender.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F78B05F2E750315002F81F0 /* DailyDefenderTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DailyDefenderTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2F78B0692E750315002F81F0 /* DailyDefenderUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DailyDefenderUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -108,7 +108,7 @@
 		2F78B0522E750314002F81F0 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2F78B0512E750314002F81F0 /* ATM 10MM App.app */,
+				2F78B0512E750314002F81F0 /* ATM Defender.app */,
 				2F78B05F2E750315002F81F0 /* DailyDefenderTests.xctest */,
 				2F78B0692E750315002F81F0 /* DailyDefenderUITests.xctest */,
 			);
@@ -140,7 +140,7 @@
 				2F22A07F2EBB90C300CD10C6 /* FirebaseStorage */,
 			);
 			productName = DailyDefender;
-			productReference = 2F78B0512E750314002F81F0 /* ATM 10MM App.app */;
+			productReference = 2F78B0512E750314002F81F0 /* ATM Defender.app */;
 			productType = "com.apple.product-type.application";
 		};
 		2F78B05E2E750315002F81F0 /* DailyDefenderTests */ = {
@@ -428,6 +428,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DailyDefender/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "ATM Defender";
 				"INFOPLIST_KEY_CFBundleDisplayName[sdk=*]" = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -445,7 +446,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
 				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gary.DailyDefender;
-				PRODUCT_NAME = "ATM 10MM App";
+				PRODUCT_NAME = "ATM Defender";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
@@ -470,6 +471,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = DailyDefender/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "ATM Defender";
 				"INFOPLIST_KEY_CFBundleDisplayName[sdk=*]" = "";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
@@ -487,7 +489,7 @@
 				MACOSX_DEPLOYMENT_TARGET = 15.5;
 				MARKETING_VERSION = 1.0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.gary.DailyDefender;
-				PRODUCT_NAME = "ATM 10MM App";
+				PRODUCT_NAME = "ATM Defender";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";

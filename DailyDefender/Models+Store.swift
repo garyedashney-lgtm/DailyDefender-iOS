@@ -156,6 +156,16 @@ final class HabitStore: ObservableObject {
     // Track latest in-flight Mailchimp call to avoid race conditions
     private var mailchimpCallSerial: Int = 0
 
+    // Helper to build yyyyMMdd key for stats snapshots
+    private func statsDayKey(for localDate: Date) -> String {
+        let f = DateFormatter()
+        f.calendar = .init(identifier: .gregorian)
+        f.locale = .init(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        f.dateFormat = "yyyyMMdd"
+        return f.string(from: localDate)
+    }
+
     init() {
         let d = UserDefaults.standard
 
@@ -225,18 +235,28 @@ final class HabitStore: ObservableObject {
         let storedDayStr = d.string(forKey: Keys.today)
         let storedDay = Self.parseLocalDate(storedDayStr)
         let todayStr = Self.localDateString(now)
+
+        // First run or missing date → just seed today + empty completed
         guard let stored = storedDay else {
             d.set(todayStr, forKey: Keys.today)
             if d.array(forKey: Keys.completed) == nil { d.set([], forKey: Keys.completed) }
             return
         }
+
         let todayDate = Self.parseLocalDate(todayStr)!
         if stored != todayDate {
+            // 🔹 Snapshot previous day's completions for rolling stats (Stats/Leaderboard/Weekly)
+            let prevDayKey = statsDayKey(for: stored) // e.g. "20251130"
+            d.set(Array(completed), forKey: "daily_completed_\(prevDayKey)")
+
+            // Existing week-bucket rollup
             let prevWeek = isoWeekKey(from: stored)
             let baseCore = d.integer(forKey: Keys.coreTotal(prevWeek))
             let dayCore = completed.count
             let newTotal = min(max(baseCore + dayCore, 0), 56)
             d.set(newTotal, forKey: Keys.coreTotal(prevWeek))
+
+            // Reset to new day
             d.set(todayStr, forKey: Keys.today)
             d.set([], forKey: Keys.completed)
             self.today = todayStr
@@ -361,6 +381,7 @@ final class HabitStore: ObservableObject {
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: date)
     }
+
     static func parseLocalDate(_ s: String?) -> Date? {
         guard let s else { return nil }
         let f = DateFormatter()

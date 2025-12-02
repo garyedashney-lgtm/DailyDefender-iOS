@@ -58,6 +58,9 @@ struct StatsView: View {
     @State private var squadLoading = false
     @State private var squadError: String?
 
+    // Does current Pro user belong to a squad?
+    @State private var hasSquad: Bool = false
+
     // Theme helpers
     private var todayStringYMD: String {
         let df = DateFormatter()
@@ -97,8 +100,8 @@ struct StatsView: View {
                             .listRowBackground(AppTheme.navy900)
                     }
 
-                    // --- Pro-only Leaderboard (users + squads) ---
-                    if isPro {
+                    // --- Pro + in-squad only Leaderboard (users + squads) ---
+                    if isPro && hasSquad {
                         Section {
                             LeaderboardCard(
                                 sort: $leaderboardSort,
@@ -127,7 +130,7 @@ struct StatsView: View {
                     // Extra spacer so you can scroll well past the last card
                     Section {
                         Color.clear
-                            .frame(height: 100)   // ⬅️ bumped bottom padding
+                            .frame(height: 100)
                     }
                     .listRowSeparator(.hidden)
                     .listRowBackground(AppTheme.navy900)
@@ -137,7 +140,7 @@ struct StatsView: View {
                 .modifier(CompactListTweaks())
             }
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(true) // no back chevron
+            .navigationBarBackButtonHidden(true)
             .toolbarBackground(AppTheme.navy900, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
@@ -168,7 +171,7 @@ struct StatsView: View {
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.9)
                         }
-                        Text("Today: \(todayStringYMD)")
+                        Text("Rolling Day Count")
                             .font(.caption)
                             .foregroundStyle(AppTheme.textPrimary)
                             .padding(.bottom, 6)
@@ -206,7 +209,7 @@ struct StatsView: View {
             }
             .hidden()
 
-            // === Footer wiring: tapping "More" should pop to More screen ===
+            // Footer wiring: tapping "More" should pop to More screen
             .onReceive(NotificationCenter.default.publisher(for: .moreTabTapped)) { _ in
                 dismiss()
             }
@@ -218,17 +221,32 @@ struct StatsView: View {
             // Load / reload leaderboards when:
             // - view appears
             // - sort changes
-            // - tier flips to/from pro
-            .onAppear { loadLeaderboards() }
+            // - tier flips
+            .onAppear {
+                snapshotTodayToUserDefaults()
+                loadLeaderboards()
+            }
             .onChange(of: leaderboardSort) { _ in loadLeaderboards() }
             .onChange(of: session.tier) { _ in loadLeaderboards() }
         }
     }
 
+    // MARK: - Snapshot today's completions → UserDefaults
+
+    private func snapshotTodayToUserDefaults() {
+        let cal = Calendar(identifier: .gregorian)
+        let df = DateFormatter()
+        df.calendar = cal
+        df.dateFormat = "yyyyMMdd"
+        let key = df.string(from: Date())
+        let flags = Array(store.completed)
+        UserDefaults.standard.set(flags, forKey: "daily_completed_\(key)")
+    }
+
     // MARK: - Firestore leaderboard loading (with local override for current user)
 
     private func loadLeaderboards() {
-        // Only Pro users see/load leaderboard
+        // Only Pro users even attempt leaderboard.
         guard session.tier == .pro else {
             leaderboardEntries = []
             leaderboardError = nil
@@ -237,6 +255,8 @@ struct StatsView: View {
             squadEntries = []
             squadError = nil
             squadLoading = false
+
+            hasSquad = false
             return
         }
 
@@ -246,21 +266,21 @@ struct StatsView: View {
         squadError = nil
 
         Task {
-                    // 1) Compute local totals for current user (from device snapshots)
-                    let localTotals = await MainActor.run {
-                        self.computeLocalTotalsForCurrentUser()
-                    }
-                    let currentUid = await MainActor.run {
-                        self.session.user?.uid
-                    }
+            // 1) Compute local totals for current user (from device snapshots)
+            let localTotals = await MainActor.run {
+                self.computeLocalTotalsForCurrentUser()
+            }
+            let currentUid = await MainActor.run {
+                self.session.user?.uid
+            }
 
-                    // 1b) Phone → Firestore: keep server snapshot in sync with device
-                    await session.syncTotalsFromLocal(localTotals)
+            // 1b) Phone → Firestore: keep server snapshot in sync with device
+            await session.syncTotalsFromLocal(localTotals)
 
-                    do {
-                        let db = session.db
-                        let usersRef = db.collection("users")
-                        let squadsRef = db.collection("squads")
+            do {
+                let db = session.db
+                let usersRef = db.collection("users")
+                let squadsRef = db.collection("squads")
 
                 // --- 2) Pull up to 500 Pro users ---
                 let proSnapshot = try await usersRef
@@ -269,6 +289,32 @@ struct StatsView: View {
                     .getDocuments()
 
                 let docs = proSnapshot.documents
+
+                // Determine if current Pro user actually has a squad
+                let currentUserHasSquad: Bool = {
+                    guard let uid = currentUid else { return false }
+                    guard let myDoc = docs.first(where: { $0.documentID == uid }) else { return false }
+                    let data = myDoc.data()
+                    let squad = ((data["squadID"] as? String) ?? (data["squadId"] as? String) ?? "")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    return !squad.isEmpty
+                }()
+
+                if !currentUserHasSquad {
+                    // Pro but no squad → no leaderboard UI at all.
+                    await MainActor.run {
+                        self.hasSquad = false
+
+                        self.leaderboardEntries = []
+                        self.leaderboardLoading = false
+                        self.leaderboardError = nil
+
+                        self.squadEntries = []
+                        self.squadLoading = false
+                        self.squadError = nil
+                    }
+                    return
+                }
 
                 func totalsForDoc(_ doc: QueryDocumentSnapshot) -> (Int, Int, Int) {
                     let data = doc.data()
@@ -317,10 +363,12 @@ struct StatsView: View {
                 }
 
                 await MainActor.run {
+                    self.hasSquad = true
                     self.leaderboardEntries = topEntries
                 }
 
-                // --- 4) Start squad map from /squads (all squads show even at 0 pts) ---
+                // --- 4) Start squad map from /squads (all squads show even at 0 pts)
+                //       EXCEPT: Admin squad is hidden from rankings.
                 var squadMap: [String: SquadEntry] = [:]  // key = full squad name
 
                 let squadsSnapshot = try await squadsRef.getDocuments()
@@ -329,6 +377,12 @@ struct StatsView: View {
                     let fullName = (sData["name"] as? String ?? sDoc.documentID)
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     if fullName.isEmpty { continue }
+
+                    let lower = fullName.lowercased()
+                    if lower == "admin" || lower.hasPrefix("admin squad") {
+                        // Admin squad exists, but is *not* ranked in squad leaderboard.
+                        continue
+                    }
 
                     let displayLabel = squadDisplayLabel(fullName)
                     if squadMap[fullName] == nil {
@@ -347,6 +401,13 @@ struct StatsView: View {
                     let fullName = ((data["squadID"] as? String) ?? (data["squadId"] as? String) ?? "")
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     if fullName.isEmpty { continue }
+
+                    let lower = fullName.lowercased()
+                    if lower == "admin" || lower.hasPrefix("admin squad") {
+                        // Admin users still show up in user leaderboard,
+                        // but their squad is invisible in squad rankings.
+                        continue
+                    }
 
                     let (t7, t30, t60) = totalsForDoc(doc)
 
@@ -403,6 +464,7 @@ struct StatsView: View {
                     self.squadError = msg
                     self.squadEntries = []
                     self.squadLoading = false
+                    // keep hasSquad as-is; UI gating still uses it
                 }
             }
         }
@@ -432,6 +494,12 @@ struct StatsView: View {
             df.calendar = Calendar(identifier: .gregorian)
             df.dateFormat = "yyyyMMdd"
             return df.string(from: Date())
+        }
+
+        func snapshotToday() {
+            let key = todayKey()
+            let flags = Array(store.completed)
+            UserDefaults.standard.set(flags, forKey: "daily_completed_\(key)")
         }
 
         func perDayCompletedOrLive(_ dateKey: String) -> Set<String> {
@@ -465,7 +533,9 @@ struct StatsView: View {
             }
         }
 
-        // Same as totalsRow in DailyDefenderActivityCard
+        // Make sure today's state is persisted before rolling the windows:
+        snapshotToday()
+
         let all4_7   = countAll4PInLastNDays(7)
         let phys_7   = countPillarInLastNDays(flag: physId, n: 7)
         let piety_7  = countPillarInLastNDays(flag: pietyId, n: 7)
@@ -497,7 +567,6 @@ struct StatsView: View {
 private struct DailyDefenderActivityCard: View {
     @EnvironmentObject var store: HabitStore
 
-    // Pillar flag ids — must match DailyView / Android
     private let physId = "pillar_phys"
     private let pietyId = "pillar_piety"
     private let peopleId = "pillar_people"
@@ -553,7 +622,6 @@ private struct DailyDefenderActivityCard: View {
     @ViewBuilder
     private func tableRow(_ title: String, flag: String? = nil, allFour: Bool = false) -> some View {
         HStack(spacing: 4) {
-            // First column
             Text(title)
                 .font(.subheadline)
                 .foregroundStyle(AppTheme.textPrimary)
@@ -563,7 +631,6 @@ private struct DailyDefenderActivityCard: View {
 
             Spacer(minLength: 6)
 
-            // Numeric columns
             let v7   = allFour ? countAll4PInLastNDays(7)  : countPillarInLastNDays(flag: flag!, n: 7)
             let v30  = allFour ? countAll4PInLastNDays(30) : countPillarInLastNDays(flag: flag!, n: 30)
             let v60  = allFour ? countAll4PInLastNDays(60) : countPillarInLastNDays(flag: flag!, n: 60)
@@ -634,7 +701,6 @@ private struct DailyDefenderActivityCard: View {
         }
     }
 
-    // MARK: - Rolling-window logic (snapshot parity)
     private func lastNDateKeys(_ n: Int) -> [String] {
         let cal = Calendar(identifier: .gregorian)
         let df = DateFormatter()
@@ -653,7 +719,6 @@ private struct DailyDefenderActivityCard: View {
         return df.string(from: Date())
     }
 
-    /// Pull per-day snapshot from UserDefaults; for *today* fall back to live set in `store.completed`.
     private func perDayCompletedOrLive(_ dateKey: String) -> Set<String> {
         if let snap = UserDefaults.standard.array(forKey: "daily_completed_\(dateKey)") as? [String] {
             return Set(snap)
@@ -664,7 +729,6 @@ private struct DailyDefenderActivityCard: View {
         return []
     }
 
-    /// True if day has all 4 pillar flags.
     private func dayHasAllFourPs(_ perDay: Set<String>) -> Bool {
         perDay.contains(physId) &&
         perDay.contains(pietyId) &&
@@ -672,7 +736,6 @@ private struct DailyDefenderActivityCard: View {
         perDay.contains(prodId)
     }
 
-    /// Rolling count of days in the last `n` where all 4Ps were done.
     private func countAll4PInLastNDays(_ n: Int) -> Int {
         lastNDateKeys(n).reduce(0) { acc, key in
             let s = perDayCompletedOrLive(key)
@@ -680,7 +743,6 @@ private struct DailyDefenderActivityCard: View {
         }
     }
 
-    /// Rolling count of days in the last `n` where a specific pillar flag appeared.
     private func countPillarInLastNDays(flag: String, n: Int) -> Int {
         lastNDateKeys(n).reduce(0) { acc, key in
             let s = perDayCompletedOrLive(key)
@@ -701,7 +763,6 @@ private struct LeaderboardCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Title
             HStack {
                 Spacer()
                 Text("Leaderboard")
@@ -711,7 +772,6 @@ private struct LeaderboardCard: View {
             }
             .padding(.bottom, 4)
 
-            // Sort chips — centered with extra padding below
             VStack(spacing: 4) {
                 HStack(spacing: 12) {
                     Text("Sort by:")
@@ -734,7 +794,6 @@ private struct LeaderboardCard: View {
             }
             .padding(.bottom, 10)
 
-            // Header row
             HStack {
                 Text("#")
                     .font(.subheadline.weight(.semibold))
@@ -760,13 +819,11 @@ private struct LeaderboardCard: View {
             .padding(.horizontal, 8)
             .padding(.bottom, 4)
 
-            // Card surface
             VStack(spacing: 6) {
                 if isLoading {
                     HStack {
                         Spacer()
-                        ProgressView()
-                            .scaleEffect(0.8)
+                        ProgressView().scaleEffect(0.8)
                         Spacer()
                     }
                     .padding(.vertical, 12)
@@ -849,7 +906,6 @@ private struct SquadRankingsCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Title
             HStack {
                 Spacer()
                 Text("Squad Rankings")
@@ -859,7 +915,6 @@ private struct SquadRankingsCard: View {
             }
             .padding(.bottom, 4)
 
-            // Header row
             HStack {
                 Text("#")
                     .font(.subheadline.weight(.semibold))
@@ -889,8 +944,7 @@ private struct SquadRankingsCard: View {
                 if isLoading {
                     HStack {
                         Spacer()
-                        ProgressView()
-                            .scaleEffect(0.8)
+                        ProgressView().scaleEffect(0.8)
                         Spacer()
                     }
                     .padding(.vertical, 12)
@@ -1001,7 +1055,6 @@ private func shortenName(_ full: String?) -> String {
     }
 }
 
-// Convert full squad name like "Matinee Monsters" → "Monsters"
 private func squadDisplayLabel(_ full: String) -> String {
     let trimmed = full.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return trimmed }
@@ -1009,7 +1062,7 @@ private func squadDisplayLabel(_ full: String) -> String {
     return parts.count >= 2 ? String(parts.last!) : trimmed
 }
 
-// MARK: - Compact list tweaks (reuse)
+// MARK: - Compact list tweaks
 
 private struct CompactListTweaks: ViewModifier {
     @ViewBuilder

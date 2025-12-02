@@ -73,7 +73,7 @@ struct IOSFooterBar: View {
             // Row 2: app/version + ISO week + DEV badge (only on dev target)
             HStack(spacing: 8) {
                 HStack(spacing: 6) {
-                    Text("ATM 10MM App")
+                    Text("ATM Defender App")
                         .font(footerFont)
                         .foregroundStyle(Color.white.opacity(0.72))
 

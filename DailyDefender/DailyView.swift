@@ -246,7 +246,10 @@ struct DailyView: View {
                     if prevAtLeast4   { setPrev4(false) }
                 } else if !prevAtLeast4 && !hasCelebrated4 {
                     setCelebrated4(true); setPrev4(true)
-                    showVictoryModal = true
+                    // 🔒 Victory video obeys User Settings
+                    if CelebrationSettings.isVideoEnabled {
+                        showVictoryModal = true
+                    }
                 } else if !prevAtLeast4 {
                     setPrev4(true)
                 }
@@ -329,14 +332,21 @@ struct DailyView: View {
 
     // Celebrations
     private func fireConfettiAndAudio() {
-        withAnimation { showConfetti = true }
-        if let url = Bundle.main.url(forResource: "welldone", withExtension: "mp3")
-            ?? Bundle.main.url(forResource: "welldone", withExtension: "m4a") {
-            audioPlayer = try? AVAudioPlayer(contentsOf: url)
-            audioPlayer?.play()
+        // Confetti respects User Settings
+        if CelebrationSettings.isConfettiEnabled {
+            withAnimation { showConfetti = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                showConfetti = false
+            }
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
-            showConfetti = false
+
+        // Audio respects User Settings
+        if CelebrationSettings.isAudioEnabled {
+            if let url = Bundle.main.url(forResource: "welldone", withExtension: "mp3")
+                ?? Bundle.main.url(forResource: "welldone", withExtension: "m4a") {
+                audioPlayer = try? AVAudioPlayer(contentsOf: url)
+                audioPlayer?.play()
+            }
         }
     }
 }

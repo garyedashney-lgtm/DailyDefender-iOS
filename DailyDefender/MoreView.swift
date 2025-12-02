@@ -38,9 +38,14 @@ struct MoreView: View {
                         MoreCardRow(title: "How To Use App", emoji: "📖") {
                             goInfo = true
                         }
+
                         MoreCardRow(title: "Resources", emoji: "📚") {
                             goResources = true
                         }
+
+                        // 🔹 User Settings (collapsible card from separate file)
+                        UserSettingsCard()
+
                         MoreCardRow(title: "Stats", emoji: "📊") {
                             goStats = true
                         }

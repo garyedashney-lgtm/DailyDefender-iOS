@@ -16,12 +16,9 @@ struct WeeklyView: View {
         return String(format: "%04d-W%02d", y, w)
     }
 
-    // MARK: Weekly Totals (display only)
-    private let weeklyTotalCap = 28
-    private let perPillarCap = 7
-
-    @State private var coreTotalSaved: Int = 0
-    @State private var pillarSaved: (phys: Int, piety: Int, people: Int, prod: Int) = (0,0,0,0)
+    // MARK: Weekly Totals (display only, rolling last 7 days)
+    private let weeklyTotalCap = 28       // 4 pillars * 7 days
+    private let perPillarCap = 7          // each P max once/day for 7 days
 
     private func pid(_ p: Pillar) -> String {
         switch p {
@@ -31,21 +28,27 @@ struct WeeklyView: View {
         case .Production: return "pillar_prod"
         }
     }
-    private var todayCompletedPillarCount: Int {
-        [Pillar.Physiology, .Piety, .People, .Production]
-            .map { store.completed.contains(pid($0)) ? 1 : 0 }
-            .reduce(0, +)
+
+    // Rolling 7-day counts pulled from daily snapshots (Stats parity)
+    private var physCount: Int {
+        min(countPillarInLast7Days(flag: pid(.Physiology)), perPillarCap)
     }
+    private var pietyCount: Int {
+        min(countPillarInLast7Days(flag: pid(.Piety)), perPillarCap)
+    }
+    private var peopleCount: Int {
+        min(countPillarInLast7Days(flag: pid(.People)), perPillarCap)
+    }
+    private var prodCount: Int {
+        min(countPillarInLast7Days(flag: pid(.Production)), perPillarCap)
+    }
+
     private var displayCoreTotal: Int {
-        min(coreTotalSaved + todayCompletedPillarCount, weeklyTotalCap)
+        min(physCount + pietyCount + peopleCount + prodCount, weeklyTotalCap)
     }
     private var weeklyProgress: Double {
         weeklyTotalCap == 0 ? 0 : Double(displayCoreTotal) / Double(weeklyTotalCap)
     }
-    private var physCount: Int   { min(pillarSaved.phys   + (store.completed.contains(pid(.Physiology)) ? 1 : 0), perPillarCap) }
-    private var pietyCount: Int  { min(pillarSaved.piety  + (store.completed.contains(pid(.Piety)) ? 1 : 0), perPillarCap) }
-    private var peopleCount: Int { min(pillarSaved.people + (store.completed.contains(pid(.People)) ? 1 : 0), perPillarCap) }
-    private var prodCount: Int   { min(pillarSaved.prod   + (store.completed.contains(pid(.Production)) ? 1 : 0), perPillarCap) }
 
     // MARK: Weekly text (persisted per week)
     @State private var winsLosses: String = ""
@@ -516,7 +519,7 @@ struct WeeklyView: View {
         }
     }
 
-    // MARK: Persistence (scoped by week)
+    // MARK: Persistence (scoped by week) — journal text only
     private func key(_ base: String) -> String { "\(base)_\(weekKey)" }
 
     private func hydrateFromStorage() {
@@ -530,31 +533,19 @@ struct WeeklyView: View {
         carryDone        = d.bool(forKey:  key("weekly_carryDone"))
         oneThingNextWeek = d.string(forKey: key("weekly_oneThingNextWeek")) ?? ""
         journalNotes     = d.string(forKey: key("weekly_journalNotes")) ?? ""
-        coreTotalSaved   = d.integer(forKey: key("weekly_coreTotalSaved"))
-        pillarSaved = (
-            d.integer(forKey: key("weekly_pSaved_phys")),
-            d.integer(forKey: key("weekly_pSaved_piety")),
-            d.integer(forKey: key("weekly_pSaved_people")),
-            d.integer(forKey: key("weekly_pSaved_prod"))
-        )
     }
 
     private func flushAll() {
         let d = UserDefaults.standard
-        d.set(winsLosses, forKey: key("weekly_winsLosses"))
-        d.set(phys, forKey: key("weekly_phys"))
-        d.set(prayer, forKey: key("weekly_prayer"))
-        d.set(people, forKey: key("weekly_people"))
-        d.set(production, forKey: key("weekly_production"))
-        d.set(carryText, forKey: key("weekly_carryText"))
-        d.set(carryDone, forKey: key("weekly_carryDone"))
+        d.set(winsLosses,       forKey: key("weekly_winsLosses"))
+        d.set(phys,             forKey: key("weekly_phys"))
+        d.set(prayer,           forKey: key("weekly_prayer"))
+        d.set(people,           forKey: key("weekly_people"))
+        d.set(production,       forKey: key("weekly_production"))
+        d.set(carryText,        forKey: key("weekly_carryText"))
+        d.set(carryDone,        forKey: key("weekly_carryDone"))
         d.set(oneThingNextWeek, forKey: key("weekly_oneThingNextWeek"))
-        d.set(journalNotes, forKey: key("weekly_journalNotes"))
-        d.set(coreTotalSaved, forKey: key("weekly_coreTotalSaved"))
-        d.set(pillarSaved.phys,   forKey: key("weekly_pSaved_phys"))
-        d.set(pillarSaved.piety,  forKey: key("weekly_pSaved_piety"))
-        d.set(pillarSaved.people, forKey: key("weekly_pSaved_people"))
-        d.set(pillarSaved.prod,   forKey: key("weekly_pSaved_prod"))
+        d.set(journalNotes,     forKey: key("weekly_journalNotes"))
     }
 
     private func saveCarryoverDone(_ v: Bool) {
@@ -665,6 +656,45 @@ struct WeeklyView: View {
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         showSavedAlert = true
+    }
+
+    // MARK: - Rolling 7-day logic (shared with StatsView conceptually)
+
+    private func last7DateKeys() -> [String] {
+        let cal = Calendar(identifier: .gregorian)
+        let df = DateFormatter()
+        df.calendar = cal
+        df.dateFormat = "yyyyMMdd"
+        return (0..<7).compactMap { i in
+            guard let d = cal.date(byAdding: .day, value: -i, to: Date()) else { return nil }
+            return df.string(from: d)
+        }
+    }
+
+    private func todayKey() -> String {
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .gregorian)
+        df.dateFormat = "yyyyMMdd"
+        return df.string(from: Date())
+    }
+
+    /// Pull per-day snapshot from UserDefaults; for *today* fall back to live set in `store.completed`.
+    private func perDayCompletedOrLive(_ dateKey: String) -> Set<String> {
+        if let snap = UserDefaults.standard.array(forKey: "daily_completed_\(dateKey)") as? [String] {
+            return Set(snap)
+        }
+        if dateKey == todayKey() {
+            return store.completed
+        }
+        return []
+    }
+
+    /// Rolling count of days in the last 7 where a specific pillar flag appeared.
+    private func countPillarInLast7Days(flag: String) -> Int {
+        last7DateKeys().reduce(0) { acc, key in
+            let s = perDayCompletedOrLive(key)
+            return acc + (s.contains(flag) ? 1 : 0)
+        }
     }
 }
 
