@@ -44,6 +44,15 @@ struct IOSFooterBar: View {
                 if page == .journal {
                     NotificationCenter.default.post(name: .JumpToJournalHome, object: nil)
                 }
+
+                // 🔹 NEW: if More is reselected, tell whoever is on the More stack
+                // (Info, Resources, Stats, UserSettingsScreen) to dismiss back to More.
+                if page == .more {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("Footer.MoreTabTapped"),
+                        object: nil
+                    )
+                }
             } else {
                 onSelectPage(page)
             }

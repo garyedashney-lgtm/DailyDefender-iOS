@@ -104,7 +104,7 @@ private struct Content: View {
                         WeeklyView()
                             .environmentObject(store)
                     } else {
-                        PaywallCardView(title: "Pro Feature")
+                        PaywallCardView(title: "Requires Standard Subscription")
                     }
 
                 case .goals:
@@ -112,7 +112,7 @@ private struct Content: View {
                         GoalsView()
                             .environmentObject(store)
                     } else {
-                        PaywallCardView(title: "Pro Feature")
+                        PaywallCardView(title: "Requires Standard Subscription")
                     }
 
                 case .journal:
@@ -120,7 +120,7 @@ private struct Content: View {
                         JournalHomeView()
                             .environmentObject(store)
                     } else {
-                        PaywallCardView(title: "Pro Feature")
+                        PaywallCardView(title: "Requires Pro Subscription")
                     }
 
                 case .more:

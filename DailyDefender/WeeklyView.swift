@@ -111,7 +111,7 @@ struct WeeklyView: View {
                             countText: nil,
                             subtitle: "",
                             text: $winsLosses,
-                            placeholder: "type your notes here…",
+                            placeholder: "  type your notes here…",
                             onFocus: { focused in
                                 anyEditorFocused = focused
                                 if focused { scrollTo("wins", proxy: proxy) }
@@ -125,7 +125,7 @@ struct WeeklyView: View {
                             countText: "\(physCount)/\(perPillarCap)",
                             subtitle: "   The body is the universal address of your existence",
                             text: $phys,
-                            placeholder: "type your notes here…",
+                            placeholder: "  type your notes here…",
                             onFocus: { f in
                                 anyEditorFocused = f
                                 if f { scrollTo("phys", proxy: proxy) }
@@ -139,7 +139,7 @@ struct WeeklyView: View {
                             countText: "\(pietyCount)/\(perPillarCap)",
                             subtitle: "   Using mystery & awe as the spirit speaks for the soul",
                             text: $prayer,
-                            placeholder: "type your notes here…",
+                            placeholder: "  type your notes here…",
                             onFocus: { f in
                                 anyEditorFocused = f
                                 if f { scrollTo("piety", proxy: proxy) }
@@ -153,7 +153,7 @@ struct WeeklyView: View {
                             countText: "\(peopleCount)/\(perPillarCap)",
                             subtitle: "   Team Human: herd animals who exist in each other",
                             text: $people,
-                            placeholder: "type your notes here…",
+                            placeholder: "  type your notes here…",
                             onFocus: { f in
                                 anyEditorFocused = f
                                 if f { scrollTo("people", proxy: proxy) }
@@ -167,7 +167,7 @@ struct WeeklyView: View {
                             countText: "\(prodCount)/\(perPillarCap)",
                             subtitle: "   A man produces more than he consumes",
                             text: $production,
-                            placeholder: "type your notes here…",
+                            placeholder: "  type your notes here…",
                             onFocus: { f in
                                 anyEditorFocused = f
                                 if f { scrollTo("prod", proxy: proxy) }
@@ -181,7 +181,7 @@ struct WeeklyView: View {
                             title: "This Week’s One Thing Done?",
                             text: $carryText,
                             isDone: $carryDone,
-                            placeholder: "— none set last week —",
+                            placeholder: "  — none set last week —",
                             onFocus: { f in
                                 anyEditorFocused = f
                                 if f { scrollTo("carry", proxy: proxy) }
@@ -195,7 +195,7 @@ struct WeeklyView: View {
                             title: "One Thing for Next Week",
                             subtitle: "",
                             text: $oneThingNextWeek,
-                            placeholder: "type your notes here…",
+                            placeholder: "  type your notes here…",
                             onFocus: { f in
                                 anyEditorFocused = f
                                 if f { scrollTo("next", proxy: proxy) }
@@ -209,7 +209,7 @@ struct WeeklyView: View {
                             title: "Extra Notes",
                             subtitle: "",
                             text: $journalNotes,
-                            placeholder: "type your extra notes here…",
+                            placeholder: "  type your extra notes here…",
                             onFocus: { f in
                                 anyEditorFocused = f
                                 if f { scrollTo("notes", proxy: proxy) }
@@ -219,7 +219,7 @@ struct WeeklyView: View {
                         // === Share / Save to Journal row ===
                         Section {
                             HStack(spacing: 12) {
-                                // SHARE BUTTON
+                                // SHARE BUTTON — available to all tiers
                                 Button(action: shareWeeklySummary) {
                                     Text("Share")
                                         .foregroundStyle(AppTheme.textPrimary)
@@ -236,17 +236,19 @@ struct WeeklyView: View {
 
                                 Spacer(minLength: 12)
 
-                                // SAVE TO JOURNAL (WCS snapshot)
-                                Button(action: { saveWeeklySnapshotToJournal() }) {
-                                    Text("Save to Journal")
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 10)
-                                        .background(AppTheme.appGreen)
-                                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                // SAVE TO JOURNAL (WCS snapshot) — Pro only
+                                if session.tier.canAccessJournal {
+                                    Button(action: { saveWeeklySnapshotToJournal() }) {
+                                        Text("Save to Journal")
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(AppTheme.appGreen)
+                                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Save Weekly Check-In snapshot to Journal Library")
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Save Weekly Check-In snapshot to Journal Library")
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
@@ -734,7 +736,9 @@ private struct BulletNotesCard: View {
     @Binding var text: String
     let placeholder: String
     var onFocusChange: ((Bool) -> Void)? = nil
+
     @State private var measuredHeight: CGFloat = 46
+    @State private var isFocused: Bool = false
 
     init(text: Binding<String>, placeholder: String, onFocusChange: ((Bool) -> Void)? = nil) {
         _text = text
@@ -751,7 +755,8 @@ private struct BulletNotesCard: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(AppTheme.surfaceUI)
 
-            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Placeholder only when not focused AND no text
+            if !isFocused && text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(placeholder)
                     .font(.callout.italic())
                     .foregroundStyle(AppTheme.textSecondary)
@@ -777,9 +782,16 @@ private struct BulletNotesCard: View {
                     text: $text,
                     onHeightChange: { h in
                         let clamped = max(46, ceil(h))
-                        if abs(clamped - measuredHeight) > 0.5 { measuredHeight = clamped }
+                        if abs(clamped - measuredHeight) > 0.5 {
+                            measuredHeight = clamped
+                        }
                     },
-                    onFocusChange: onFocusChange
+                    onFocusChange: { focused in
+                        // Track focus locally so we can hide/show placeholder immediately
+                        isFocused = focused
+                        // Still bubble the focus change up to WeeklyView
+                        onFocusChange?(focused)
+                    }
                 )
                 .frame(height: measuredHeight)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -791,7 +803,6 @@ private struct BulletNotesCard: View {
         .padding(.bottom, 4)
     }
 }
-
 // MARK: - UITextView wrapper (auto-grow, sentences, no bullets in text)
 private struct WeeklyAutoGrowTextView: UIViewRepresentable {
     @Binding var text: String

@@ -1,4 +1,6 @@
 import SwiftUI
+import FirebaseAuth
+import FirebaseFirestore
 
 struct MoreView: View {
     @EnvironmentObject var store: HabitStore
@@ -9,10 +11,17 @@ struct MoreView: View {
     @State private var goInfo = false
     @State private var goResources = false
     @State private var goStats = false
+    @State private var goUserSettings = false   // 🔹 new
 
     // Header actions
     @State private var showProfileEdit = false
     @State private var showShield = false
+
+    // Current app tier for settings ("free", "amateur", "pro")
+    @State private var currentTier: String = "free"
+
+    // Whether this user has / had a Stripe subscription
+    @State private var hasStripeSubscription: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -21,20 +30,8 @@ struct MoreView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
-                        // Section header style matches Journal
-                        HStack(spacing: 10) {
-                            Text("🧭")
-                                .font(.system(size: 22))
-                            Text("More")
-                                .font(.title3.weight(.semibold))
-                                .foregroundColor(AppTheme.textPrimary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.top, 4)
-                        .padding(.bottom, 2)
 
-                        // Cards
+                        // 🔹 Cards only (no extra "More" + compass row)
                         MoreCardRow(title: "How To Use App", emoji: "📖") {
                             goInfo = true
                         }
@@ -43,8 +40,10 @@ struct MoreView: View {
                             goResources = true
                         }
 
-                        // 🔹 User Settings (collapsible card from separate file)
-                        UserSettingsCard()
+                        // 🔹 User Settings row → pushes full screen
+                        MoreCardRow(title: "User Settings", emoji: "⚙️") {
+                            goUserSettings = true
+                        }
 
                         MoreCardRow(title: "Stats", emoji: "📊") {
                             goStats = true
@@ -52,7 +51,7 @@ struct MoreView: View {
 
                         Spacer(minLength: 56)
                     }
-                    .padding(.horizontal, 16)   // same horizontal pad as Journal
+                    .padding(.horizontal, 16)
                     .padding(.top, 12)
                 }
             }
@@ -61,7 +60,7 @@ struct MoreView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                // LEFT — same shield asset style as Journal Home
+                // LEFT — shield asset
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button(action: { showShield = true }) {
                         (UIImage(named: "AppShieldSquare") != nil
@@ -69,7 +68,12 @@ struct MoreView: View {
                          : Image("four_ps").resizable().scaledToFit())
                         .frame(width: 36, height: 36)
                         .clipShape(Circle())
-                        .overlay(Circle().stroke(AppTheme.textSecondary.opacity(0.4), lineWidth: 1))
+                        .overlay(
+                            Circle().stroke(
+                                AppTheme.textSecondary.opacity(0.4),
+                                lineWidth: 1
+                            )
+                        )
                         .padding(4)
                         .offset(y: -2)
                     }
@@ -89,7 +93,8 @@ struct MoreView: View {
                 // RIGHT — avatar → ProfileEdit
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
-                        if let path = store.profile.photoPath, let ui = UIImage(contentsOfFile: path) {
+                        if let path = store.profile.photoPath,
+                           let ui = UIImage(contentsOfFile: path) {
                             Image(uiImage: ui).resizable().scaledToFill()
                         } else if UIImage(named: "ATMPic") != nil {
                             Image("ATMPic").resizable().scaledToFill()
@@ -108,12 +113,16 @@ struct MoreView: View {
             }
             .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 48) }
 
-            // Destinations (listen for .moreTabTapped if your app posts it)
+            // Destinations
             .navigationDestination(isPresented: $goInfo) {
                 InfoView()
                     .environmentObject(store)
                     .environmentObject(session)
-                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Footer.MoreTabTapped"))) { _ in
+                    .onReceive(
+                        NotificationCenter.default.publisher(
+                            for: Notification.Name("Footer.MoreTabTapped")
+                        )
+                    ) { _ in
                         dismiss()
                     }
             }
@@ -121,7 +130,11 @@ struct MoreView: View {
                 ResourcesView()
                     .environmentObject(store)
                     .environmentObject(session)
-                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Footer.MoreTabTapped"))) { _ in
+                    .onReceive(
+                        NotificationCenter.default.publisher(
+                            for: Notification.Name("Footer.MoreTabTapped")
+                        )
+                    ) { _ in
                         dismiss()
                     }
             }
@@ -129,9 +142,29 @@ struct MoreView: View {
                 StatsView()
                     .environmentObject(store)
                     .environmentObject(session)
-                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("Footer.MoreTabTapped"))) { _ in
+                    .onReceive(
+                        NotificationCenter.default.publisher(
+                            for: Notification.Name("Footer.MoreTabTapped")
+                        )
+                    ) { _ in
                         dismiss()
                     }
+            }
+            // 🔹 User Settings screen
+            .navigationDestination(isPresented: $goUserSettings) {
+                UserSettingsScreen(
+                    currentTier: currentTier,
+                    hasStripeSubscription: hasStripeSubscription
+                )
+                .environmentObject(store)
+                .environmentObject(session)
+                .onReceive(
+                    NotificationCenter.default.publisher(
+                        for: Notification.Name("Footer.MoreTabTapped")
+                    )
+                ) { _ in
+                    dismiss()
+                }
             }
 
             // Sheets
@@ -142,6 +175,9 @@ struct MoreView: View {
                 ProfileEditView()
                     .environmentObject(store)
                     .environmentObject(session)
+            }
+            .onAppear {
+                Task { await refreshTierFromFirebase() }
             }
         }
     }
@@ -182,4 +218,56 @@ private struct MoreCardRow: View {
         }
         .buttonStyle(.plain)
     }
+}
+
+// MARK: - Firebase tier + Stripe status fetch
+
+extension MoreView {
+    /// Reads the user's tier from Firestore and normalizes it to: "free" | "amateur" | "pro"
+    /// Also sets `hasStripeSubscription` if a stripeCustomerId is present.
+    private func refreshTierFromFirebase() async {
+        guard let user = Auth.auth().currentUser else { return }
+        let db = Firestore.firestore()
+
+        do {
+            let snapshot = try await db.collection("users").document(user.uid).getDocument()
+
+            var tier: String = "free"
+            var hasStripe = false
+
+            if let data = snapshot.data() {
+                // Tier normalization
+                if let rawTier = (data["tier"] as? String) ??
+                                 (data["appLevel"] as? String) ??
+                                 (data["plan"] as? String) {
+                    let normalized = rawTier.uppercased()
+                    switch normalized {
+                    case "FREE": tier = "free"
+                    case "AMATEUR", "STANDARD": tier = "amateur"
+                    case "PRO": tier = "pro"
+                    default: tier = rawTier.lowercased()
+                    }
+                }
+
+                // Stripe customer id present?
+                if let stripeId = data["stripeCustomerId"] as? String,
+                   !stripeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    hasStripe = true
+                }
+            }
+
+            await MainActor.run {
+                self.currentTier = tier
+                self.hasStripeSubscription = hasStripe
+            }
+        } catch {
+            print("refreshTierFromFirebase (MoreView) error:", error.localizedDescription)
+        }
+    }
+}
+
+// MARK: - Notification helper
+
+private extension Notification.Name {
+    static let reselectTab = Notification.Name("reselectTab")
 }

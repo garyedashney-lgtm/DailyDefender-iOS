@@ -95,9 +95,9 @@ struct ResourcesView: View {
                         }
 
                         // === Weekly Men's Zoom Support Groups ===
-                        CollapsibleSection(title: "Weekly Men's Zoom Support Groups", isExpanded: $expandZoom) {
+                        CollapsibleSection(title: "The Defender Board of Directors", isExpanded: $expandZoom) {
                             ResourceLinkRow(
-                                label: "10MM Board of Defenders",
+                                label: "Defender Board of Defenders",
                                 url: "https://10mm.org/membership",
                                 assetName: "ic_zoom",
                                 subtitle: "Join live calls and accountability"

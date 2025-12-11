@@ -15,6 +15,7 @@ struct InfoView: View {
     @State private var expandWeekly = false
     @State private var expandGoals = false
     @State private var expandJournal = false
+    @State private var expandStats = false       // 📊 NEW
     @State private var expandResources = false
     @State private var expandProfile = false
     @State private var expandTopLeftBadge = false
@@ -33,9 +34,13 @@ struct InfoView: View {
                         // ✅ Daily
                         CollapsibleSection(title: "✅ Daily", isExpanded: $expandDaily) {
                             sectionText("""
-Each day, put a check in the checkbox for each quadrant that you have completed an action. If you have any special focus action for that quadrant, like no sugar for instance, put that into the Focused activity entry box.
+Each day, put a check in the checkbox for each quadrant that you have completed an action.
+
+If you have any special focus action for that quadrant, like no sugar for instance, put that into the Focused activity entry box.
 
 Daily at midnight your checks will roll into the weekly totals shown on the Weekly screen and then reset so that you start each day fresh. Your Focused activity action will persist until you change it.
+
+Your daily check marks also roll into the Stats page, where you can see your 7-, 30-, and 60-day totals and overall balance across all four quadrants.
 
 For clarity on the 4 quadrants, visit the free Quadrant Course in the Resources page.
 
@@ -46,35 +51,46 @@ Included at the bottom of the screen is a place to list any To Do List items tha
                         // 📅 Weekly
                         CollapsibleSection(title: "📅 Weekly", isExpanded: $expandWeekly) {
                             sectionText("""
-Use this page to prepare for your squad’s (BOD) weekly check-in.
+Reflect on your week’s progress and any issues you're facing in each quadrant, and capture Wins and Losses. Check whether the week’s One Thing was done or not and choose a new one for the week ahead.
 
-Reflect on progress and/or issues your facing in each quadrant and capture Wins and Losses. Check whether the week’s One Thing was done or not and choose a new one for the week ahead.
+If you're in a BOD Squad group and can’t attend the weekly meeting, fill this summary out and use the Share button at the bottom of the screen to send it to your group (via WhatsApp) so they can offer encouragement and feedback.
 
-Share this summary during your squad’s (BOD) weekly Zoom call. If you can’t attend the weekly meeting, fill it out anyway and use the Share button at the bottom of the screen to send it to your group (via WhatsApp) so they can offer encouragement and feedback.
-
-Your weekly summary entries reset at the start of a new week on Sunday at midnight.
+Your weekly entries clear and reset at the start of a new week on Sunday at midnight. This is an excellent time to Share to Journal (Pro users only) so you can document your progress over time.
 """)
                         }
 
                         // 🎯 Goals
                         CollapsibleSection(title: "🎯 Goals", isExpanded: $expandGoals) {
                             sectionText("""
-Use Monthly Goals to set clear 30-day goals and track the actions that move the needle forward. Keep it short, visible, and realistic.
+The Defender Destiny process connects who you are now with who you want to be across all four quadrants.
 
-Season Goals lets you set bigger 90-day outcomes that matter most.
+Start with your Current State — write the full truth of where you are at now.
 
-Review Season goals when you plan your month; review Monthly goals when you plan your week.
+Define your Destiny Vision — the man you want to be.
+
+From that Vision, work backwards to set Yearly, Seasonal, and Monthly Goals across all four quadrants.
 """)
                         }
 
                         // 📝 Journal
                         CollapsibleSection(title: "📝 Journal", isExpanded: $expandJournal) {
                             sectionText("""
-Capture thoughts, reflections, and lessons learned in your personal Journal. Each entry is saved with a title and date so you can review growth over time.
+Capture thoughts, reflections, and lessons learned in your personal Journal. Each entry is saved with a title and date so you can review your progress over time.
 
-You’ll find optional journal outlines like the 10R, Gratitude, and Cage The Wolf to guide your writing when you want more structure or to follow a certain guided process.
+You can also choose from guided outlines like the 10R, Gratitude, and Cage The Wolf when you want structure or a focused writing process.
 
-Journal entries are private and not shared with your squad.
+Journal entries are saved on your device only and never uploaded to any server. They are not shared with your squad or anyone else.
+
+To learn more about how your data is protected, read the App Privacy Manifesto in the Resources screen.
+""")
+                        }
+
+                        // 📊 Stats (NEW for iOS, matches Android)
+                        CollapsibleSection(title: "📊 Stats", isExpanded: $expandStats) {
+                            sectionText("""
+The Stats page gives you a clear picture of your progress over time. It automatically tallies your daily check marks and displays 7-, 30-, and 60-day totals for each quadrant so you can track consistency and trends.
+
+It also helps you keep your focus and activities balanced across all four quadrants — Physiology, Piety, People, and Production — ensuring you’re developing as a complete Defender, not just in one area.
 """)
                         }
 
@@ -88,7 +104,13 @@ Quick links and guides to support your journey. This area will continue to expan
                         // 👤 Profile
                         CollapsibleSection(title: "👤 Profile", isExpanded: $expandProfile) {
                             sectionText("""
-Tap your avatar (top right) to update your photo and email. Your photo stays securely stored inside the app.
+Tap your avatar (top right) to open the Profile screen. From here you can:
+
+• Update your user name and profile photo
+• Change your login email (requires password + verification)
+• Change your password or request a reset email
+• View your App Level (Free, Standard, or Pro)
+• Sign out safely — your journals, goals, stats, and notes stay on this device
 """)
                         }
 
@@ -268,6 +290,7 @@ private struct CollapsibleSection<Content: View>: View {
         .accessibilityLabel(Text(title))
     }
 }
+
 // MARK: - Feedback Section (email handoff like Android)
 private struct FeedbackSection: View {
     @State private var showMailComposer = false
@@ -341,7 +364,7 @@ private struct FeedbackSection: View {
         mailData = MailData(
             recipients: ["gmanappfeedback@gmail.com"],
             subject: subject,
-            body: mailBody   // ← updated
+            body: mailBody
         )
 
         // 1) Apple Mail (MessageUI)
