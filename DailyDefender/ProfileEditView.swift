@@ -32,6 +32,12 @@ struct ProfileEditView: View {
     @State private var changeEmailError: String?
     @State private var showEmailChangePassword = false   // eye toggle
 
+    // MARK: - Account Delete
+    @State private var showDeleteConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteErrorMessage: String?
+    @State private var showDeleteError = false
+
     // MARK: - Misc
     @State private var showSignOutConfirm = false
     @State private var showShield = false
@@ -150,7 +156,32 @@ struct ProfileEditView: View {
             Button("Cancel", role: .cancel) {}
             Button("Sign out", role: .destructive) { performSignOut() }
         } message: {
-            Text("You’ll need to sign in again to access your Journals and Pro features.")
+            Text("You’ll need to sign in again to access your account.")
+        }
+
+        .alert("Delete account?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button(isDeletingAccount ? "Deleting…" : "Delete", role: .destructive) {
+                if !isDeletingAccount {
+                    Task { await deleteAccount() }
+                }
+            }
+            .disabled(isDeletingAccount)
+        } message: {
+            Text(
+                "This permanently deletes your app account and removes it from our servers.\n" +
+                "It does not cancel your app Standard or Pro subscription, if you have one.\n" +
+                "If you have an active subscription, cancel it first in User Settings → Manage Subscription."
+            )
+        }
+
+        .alert("Account Deletion Error", isPresented: $showDeleteError) {
+            Button("OK", role: .cancel) {
+                showDeleteError = false
+                deleteErrorMessage = nil
+            }
+        } message: {
+            Text(deleteErrorMessage ?? "Something went wrong deleting your account.")
         }
     }
 }
@@ -182,9 +213,9 @@ extension ProfileEditView {
                 }
                 .contentShape(Rectangle())   // makes whole 120x120 hitbox tappable
             }
-            .frame(width: 120, height: 120) // 🔥 bigger tap target + visual size
+            .frame(width: 120, height: 120) // bigger tap target + visual size
             .padding(.vertical, 4)
-            .disabled(isLoading)
+            .disabled(isLoading || isDeletingAccount)
 
             Text("Tap the circle to change photo")
                 .font(.caption)
@@ -196,7 +227,7 @@ extension ProfileEditView {
         Image(uiImage: ui)
             .resizable()
             .scaledToFill()
-            .frame(width: 112, height: 112)  // match placeholder size
+            .frame(width: 112, height: 112)
             .clipShape(Circle())
     }
 
@@ -213,7 +244,7 @@ extension ProfileEditView {
                     .stroke(Color.white.opacity(0.25))
             )
             .foregroundStyle(AppTheme.textPrimary)
-            .disabled(isLoading)
+            .disabled(isLoading || isDeletingAccount)
     }
 
     // MARK: Account Email + App Level
@@ -253,13 +284,14 @@ extension ProfileEditView {
     // MARK: Save / Cancel Row
     private var saveCancelButtons: some View {
         HStack(spacing: 12) {
-            Button(action: { if !isLoading { dismiss() } }) {
+            Button(action: { if !isLoading && !isDeletingAccount { dismiss() } }) {
                 Text("Cancel")
                     .frame(maxWidth: .infinity, minHeight: 40)
             }
             .buttonStyle(.bordered)
+            .disabled(isDeletingAccount)
 
-            Button(action: { if !isLoading { saveProfile() } }) {
+            Button(action: { if !isLoading && !isDeletingAccount { saveProfile() } }) {
                 if isLoading {
                     HStack {
                         ProgressView().scaleEffect(0.8)
@@ -272,6 +304,7 @@ extension ProfileEditView {
                 }
             }
             .buttonStyle(.borderedProminent)
+            .disabled(isDeletingAccount)
         }
         .padding(.top, 8)
     }
@@ -300,7 +333,7 @@ extension ProfileEditView {
                         Image(systemName: showEmailChangePassword ? "eye.slash" : "eye")
                             .foregroundStyle(.secondary)
                     }
-                    .disabled(sendingEmailChange)
+                    .disabled(sendingEmailChange || isDeletingAccount)
                 }
                 .padding(10)
                 .background(AppTheme.surfaceUI)
@@ -357,7 +390,7 @@ extension ProfileEditView {
                         }
                     }
                     .buttonStyle(.bordered)
-                    .disabled(sendingEmailChange)
+                    .disabled(sendingEmailChange || isDeletingAccount)
                 }
             }
             .padding(.top, 8)
@@ -373,6 +406,7 @@ extension ProfileEditView {
             .padding(.vertical, 6)
         }
         .padding(.top, 8)
+        .disabled(isDeletingAccount)
     }
 
     // MARK: Change Password
@@ -406,7 +440,7 @@ extension ProfileEditView {
                     }
                 }
                 .buttonStyle(.bordered)
-                .disabled(sendingReset || email.isEmpty)
+                .disabled(sendingReset || email.isEmpty || isDeletingAccount)
             }
             .padding(.top, 8)
         } label: {
@@ -421,22 +455,23 @@ extension ProfileEditView {
             .padding(.vertical, 6)
         }
         .padding(.top, 8)
+        .disabled(isDeletingAccount)
     }
 
-    // MARK: Sign Out + Manifesto Note
+    // MARK: Sign Out + Delete Account
     private var signOutSection: some View {
         Group {
             if Auth.auth().currentUser != nil {
                 Divider()
                     .padding(.top, 16)
 
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text("Account")
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
                     Button {
-                        if !isLoading {
+                        if !isLoading && !isDeletingAccount {
                             showSignOutConfirm = true
                         }
                     } label: {
@@ -445,19 +480,27 @@ extension ProfileEditView {
                     }
                     .buttonStyle(.bordered)
                     .tint(.red.opacity(0.8))
+                    .disabled(isDeletingAccount)
 
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "iphone")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .padding(.top, 2)
-
-                        Text("Your journal entries, goals, and notes remain on this device after you sign out.")
-                            .font(.footnote)
-                            .foregroundStyle(AppTheme.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                    Button {
+                        if !isLoading && !isDeletingAccount {
+                            showDeleteConfirm = true
+                        }
+                    } label: {
+                        if isDeletingAccount {
+                            HStack(spacing: 10) {
+                                ProgressView().tint(.white)
+                                Text("Deleting…")
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        } else {
+                            Text("Delete Account")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
                     }
-                    .padding(.top, 4)
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .disabled(isDeletingAccount)
                 }
                 .padding(.top, 4)
             }
@@ -492,7 +535,7 @@ extension ProfileEditView {
 
     // Avatar load
     private func loadPickedAvatar() async {
-        guard let item = draftPhoto, !isLoading else { return }
+        guard let item = draftPhoto, !isLoading, !isDeletingAccount else { return }
         if let data = try? await item.loadTransferable(type: Data.self) {
             await MainActor.run {
                 draftPhotoData = data
@@ -502,7 +545,7 @@ extension ProfileEditView {
 
     // Save profile
     private func saveProfile() {
-        guard !isLoading else { return }
+        guard !isLoading, !isDeletingAccount else { return }
 
         let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let e = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -579,7 +622,7 @@ extension ProfileEditView {
         }
     }
 
-    // MARK: Change login email — verify-before-update (Android-style)
+    // MARK: Change login email — verify-before-update
     private func changeLoginEmail() async {
         let pwd = currentPasswordForEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         let newE = newLoginEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -640,7 +683,7 @@ extension ProfileEditView {
                 }
             }
 
-            // 3) Record pendingEmail in Firestore (so we can promote it later)
+            // 3) Record pendingEmail in Firestore
             let db = Firestore.firestore()
             try await db.collection("users")
                 .document(user.uid)
@@ -683,6 +726,108 @@ extension ProfileEditView {
 
         await MainActor.run {
             sendingEmailChange = false
+        }
+    }
+
+    // MARK: Delete account (Apple 5.1.1(v))
+    private func deleteAccount() async {
+        await MainActor.run {
+            isDeletingAccount = true
+            deleteErrorMessage = nil
+            showDeleteError = false
+        }
+
+        do {
+            guard let user = Auth.auth().currentUser else {
+                throw NSError(
+                    domain: "ProfileEditView",
+                    code: 401,
+                    userInfo: [NSLocalizedDescriptionKey: "You must be signed in to delete your account."]
+                )
+            }
+
+            let uid = user.uid
+            let db = Firestore.firestore()
+            let docRef = db.collection("users").document(uid)
+
+            print("🧨 DELETE start uid=\(uid) email=\(user.email ?? "nil")")
+
+            // 0) Sanity check: do we actually have a users/{uid} doc?
+            let before = try await docRef.getDocument()
+            print("🧨 Firestore before.exists=\(before.exists)")
+
+            // 1) Delete Firestore user doc (MUST succeed)
+            do {
+                try await docRef.delete()
+            } catch {
+                print("🧨 Firestore delete FAILED:", (error as NSError).localizedDescription)
+                throw error   // HARD STOP: do NOT proceed to Auth delete
+            }
+
+            // 2) Verify the doc is actually gone (prevents “wrong doc id” / ghost behavior)
+            let after = try await docRef.getDocument()
+            print("🧨 Firestore after.exists=\(after.exists)")
+            if after.exists {
+                throw NSError(
+                    domain: "ProfileEditView",
+                    code: 403,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not remove your server profile. Please try again."]
+                )
+            }
+
+            // 3) Now delete Firebase Auth user (MUST succeed)
+            do {
+                try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+                    user.delete { error in
+                        if let error = error {
+                            cont.resume(throwing: error)
+                        } else {
+                            cont.resume(returning: ())
+                        }
+                    }
+                }
+            } catch {
+                print("🧨 Auth delete FAILED:", (error as NSError).localizedDescription)
+                throw error
+            }
+
+            // 4) Local cleanup
+            await MainActor.run {
+                store.saveProfile(
+                    name: store.profile.name ?? "",
+                    email: store.profile.email ?? "",
+                    photoPath: store.profile.photoPath,
+                    isRegistered: false
+                )
+                toastMessage = "Account deleted."
+            }
+
+            // Sign out best-effort
+            do { try Auth.auth().signOut() } catch { }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                withAnimation { toastMessage = nil }
+                dismiss()
+            }
+
+        } catch {
+            await MainActor.run {
+                let nsError = error as NSError
+                print("🧨 DELETE overall FAILED:", nsError.localizedDescription, "code=\(nsError.code)")
+
+                if nsError.code == AuthErrorCode.requiresRecentLogin.rawValue {
+                    deleteErrorMessage = "For security, please sign out, sign back in, then try deleting your account again."
+                } else {
+                    deleteErrorMessage = nsError.localizedDescription.isEmpty
+                        ? "Could not delete account."
+                        : nsError.localizedDescription
+                }
+                showDeleteError = true
+            }
+        }
+
+        await MainActor.run {
+            isDeletingAccount = false
         }
     }
 
@@ -778,14 +923,12 @@ extension ProfileEditView {
     }
 
     private func performSignOut() {
-        // Sign out of Firebase
         do {
             try Auth.auth().signOut()
         } catch {
             print("Sign out error:", error.localizedDescription)
         }
 
-        // Keep local data, just mark profile as not registered
         store.saveProfile(
             name: store.profile.name ?? "",
             email: store.profile.email ?? "",
@@ -793,7 +936,6 @@ extension ProfileEditView {
             isRegistered: false
         )
 
-        // Pop back to auth flow
         dismiss()
     }
 }
