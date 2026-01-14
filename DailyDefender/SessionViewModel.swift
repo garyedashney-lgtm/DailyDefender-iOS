@@ -70,6 +70,45 @@ final class SessionViewModel: ObservableObject {
     deinit {
         userListener?.remove()
     }
+    
+    // MARK: - Hydrate today's checkmarks from Firestore (cloud → phone)
+
+    /// Pulls users/{uid}/daily/{yyyyMMdd} and applies it to local store + UserDefaults.
+    /// Call this when DailyView appears (especially after reinstall/sign-in).
+    func hydrateTodayDailyToLocal(store: HabitStore) async {
+        guard let uid = user?.uid else { return }
+
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .gregorian)
+        df.dateFormat = "yyyyMMdd"
+        let todayKey = df.string(from: Date())
+
+        let docRef = db
+            .collection("users")
+            .document(uid)
+            .collection("daily")
+            .document(todayKey)
+
+        do {
+            let snap = try await docRef.getDocument()
+            let data = snap.data()
+            let completed = (data?["completed"] as? [String]) ?? []
+
+            // 1) Apply to in-memory store
+            store.completed = Set(completed)
+
+            // 2) Snapshot to UserDefaults so rolling windows / totals stay consistent
+            UserDefaults.standard.set(completed, forKey: "daily_completed_\(todayKey)")
+
+            #if DEBUG
+            print("✅ hydrateTodayDailyToLocal: loaded \(completed.count) items for \(todayKey)")
+            #endif
+        } catch {
+            #if DEBUG
+            print("hydrateTodayDailyToLocal failed: \(error.localizedDescription)")
+            #endif
+        }
+    }
 
     // MARK: - Entitlement resolution
 
@@ -317,6 +356,152 @@ final class SessionViewModel: ObservableObject {
             print("syncTotalsFromLocal failed: \(error.localizedDescription)")
             #endif
         }
+    }
+
+    // MARK: - Daily /daily/yyyyMMdd sync (phone → Firestore)
+
+    /// Step 2 helper called by DailyView checkbox toggles.
+    /// Writes users/{uid}/daily/{yyyyMMdd} { completed: [String], updatedAt: serverTimestamp() }
+    func uploadTodayDailyFromLocal(store: HabitStore) async {
+        guard let uid = user?.uid else { return }
+
+        // Must match StatsView/DailyView key format used in UserDefaults snapshots
+        let df = DateFormatter()
+        df.calendar = Calendar(identifier: .gregorian)
+        df.dateFormat = "yyyyMMdd"
+        let todayKey = df.string(from: Date())
+
+        // Prefer UserDefaults snapshot (consistent with your rolling windows),
+        // but fall back to live store.completed if snapshot isn't there yet.
+        let snap = UserDefaults.standard.array(forKey: "daily_completed_\(todayKey)") as? [String]
+        let completedSet = Set(snap ?? Array(store.completed))
+
+        let docRef = db
+            .collection("users")
+            .document(uid)
+            .collection("daily")
+            .document(todayKey)
+
+        do {
+            try await docRef.setData([
+                "completed": Array(completedSet),
+                "updatedAt": FieldValue.serverTimestamp()
+            ], merge: true)
+        } catch {
+            #if DEBUG
+            print("uploadTodayDailyFromLocal failed: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
+    // MARK: - Daily toggle sync (Android parity)
+
+    /// Call this immediately after a DailyView checkbox toggle.
+    /// 1) Snapshots today's completed to UserDefaults (yyyyMMdd)
+    /// 2) Uploads users/{uid}/daily/{yyyyMMdd}
+    /// 3) Computes rolling totals (7/30/60) from UserDefaults snapshots
+    /// 4) Syncs totals to users/{uid} (total7/total30/total60)
+    func syncAfterDailyToggle(store: HabitStore) async {
+        guard user?.uid != nil else { return }
+
+        // 1) Snapshot today's completed set to UserDefaults (yyyyMMdd)
+        let cal = Calendar(identifier: .gregorian)
+        let df = DateFormatter()
+        df.calendar = cal
+        df.dateFormat = "yyyyMMdd"
+        let todayKey = df.string(from: Date())
+
+        UserDefaults.standard.set(Array(store.completed), forKey: "daily_completed_\(todayKey)")
+
+        // 2) Upload daily doc
+        await uploadTodayDailyFromLocal(store: store)
+
+        // 3) Compute totals from UserDefaults snapshots + live today fallback
+        let totals = computeLocalTotalsForCurrentUser(store: store)
+
+        // 4) Sync totals to Firestore
+        await syncTotalsFromLocal(totals)
+    }
+
+    /// Same algorithm you use in StatsView, moved here so DailyView can use it too.
+    private func computeLocalTotalsForCurrentUser(store: HabitStore) -> TripleWindow {
+        let physId = "pillar_phys"
+        let pietyId = "pillar_piety"
+        let peopleId = "pillar_people"
+        let prodId = "pillar_prod"
+
+        func lastNDateKeys(_ n: Int) -> [String] {
+            let cal = Calendar(identifier: .gregorian)
+            let df = DateFormatter()
+            df.calendar = cal
+            df.dateFormat = "yyyyMMdd"
+            return (0..<n).compactMap { i in
+                guard let d = cal.date(byAdding: .day, value: -i, to: Date()) else { return nil }
+                return df.string(from: d)
+            }
+        }
+
+        func todayKey() -> String {
+            let df = DateFormatter()
+            df.calendar = Calendar(identifier: .gregorian)
+            df.dateFormat = "yyyyMMdd"
+            return df.string(from: Date())
+        }
+
+        func perDayCompletedOrLive(_ dateKey: String) -> Set<String> {
+            if let snap = UserDefaults.standard.array(forKey: "daily_completed_\(dateKey)") as? [String] {
+                return Set(snap)
+            }
+            if dateKey == todayKey() {
+                return store.completed
+            }
+            return []
+        }
+
+        func dayHasAllFourPs(_ perDay: Set<String>) -> Bool {
+            perDay.contains(physId) &&
+            perDay.contains(pietyId) &&
+            perDay.contains(peopleId) &&
+            perDay.contains(prodId)
+        }
+
+        func countAll4PInLastNDays(_ n: Int) -> Int {
+            lastNDateKeys(n).reduce(0) { acc, key in
+                let s = perDayCompletedOrLive(key)
+                return acc + ((!s.isEmpty && dayHasAllFourPs(s)) ? 1 : 0)
+            }
+        }
+
+        func countPillarInLastNDays(flag: String, n: Int) -> Int {
+            lastNDateKeys(n).reduce(0) { acc, key in
+                let s = perDayCompletedOrLive(key)
+                return acc + (s.contains(flag) ? 1 : 0)
+            }
+        }
+
+        let all4_7   = countAll4PInLastNDays(7)
+        let phys_7   = countPillarInLastNDays(flag: physId, n: 7)
+        let piety_7  = countPillarInLastNDays(flag: pietyId, n: 7)
+        let people_7 = countPillarInLastNDays(flag: peopleId, n: 7)
+        let prod_7   = countPillarInLastNDays(flag: prodId, n: 7)
+
+        let all4_30   = countAll4PInLastNDays(30)
+        let phys_30   = countPillarInLastNDays(flag: physId, n: 30)
+        let piety_30  = countPillarInLastNDays(flag: pietyId, n: 30)
+        let people_30 = countPillarInLastNDays(flag: peopleId, n: 30)
+        let prod_30   = countPillarInLastNDays(flag: prodId, n: 30)
+
+        let all4_60   = countAll4PInLastNDays(60)
+        let phys_60   = countPillarInLastNDays(flag: physId, n: 60)
+        let piety_60  = countPillarInLastNDays(flag: pietyId, n: 60)
+        let people_60 = countPillarInLastNDays(flag: peopleId, n: 60)
+        let prod_60   = countPillarInLastNDays(flag: prodId, n: 60)
+
+        let total7  = all4_7  + phys_7  + piety_7  + people_7  + prod_7
+        let total30 = all4_30 + phys_30 + piety_30 + people_30 + prod_30
+        let total60 = all4_60 + phys_60 + piety_60 + people_60 + prod_60
+
+        return TripleWindow(d7: total7, d30: total30, d60: total60)
     }
 
     // MARK: - Error mapping

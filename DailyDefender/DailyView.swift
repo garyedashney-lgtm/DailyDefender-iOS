@@ -214,6 +214,11 @@ struct DailyView: View {
             .onAppear {
                 setPrev2(completedCount >= 2)
                 setPrev4(completedCount >= 4)
+
+                Task {
+                    // Pull today's completed set from Firestore so checkmarks reflect prior state
+                    await session.hydrateTodayDailyToLocal(store: store)
+                }
             }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
                 keyboardVisible = true
@@ -287,8 +292,15 @@ struct DailyView: View {
             HStack(spacing: 8) {
                 SectionHeader(label: pillar.label, pillar: pillar, countText: nil)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                CheckSquare(checked: checked) { store.toggle(pid) }
-                    .padding(.trailing, 14)
+
+                CheckSquare(checked: checked) {
+                    // 1) local toggle
+                    store.toggle(pid)
+
+                    // 2) snapshot + upload today to Firestore immediately
+                    afterToggleSyncToCloud()
+                }
+                .padding(.trailing, 14)
             }
             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
@@ -347,6 +359,20 @@ struct DailyView: View {
                 audioPlayer = try? AVAudioPlayer(contentsOf: url)
                 audioPlayer?.play()
             }
+        }
+    }
+    private func afterToggleSyncToCloud() {
+        // Snapshot today's completed set to UserDefaults (yyyyMMdd)
+        let cal = Calendar(identifier: .gregorian)
+        let df = DateFormatter()
+        df.calendar = cal
+        df.dateFormat = "yyyyMMdd"
+        let key = df.string(from: Date())
+        UserDefaults.standard.set(Array(store.completed), forKey: "daily_completed_\(key)")
+
+        // Upload today doc immediately
+        Task {
+            await session.syncAfterDailyToggle(store: store)
         }
     }
 }
