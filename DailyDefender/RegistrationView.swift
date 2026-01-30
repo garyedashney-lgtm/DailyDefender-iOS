@@ -257,6 +257,8 @@ struct RegistrationView: View {
             // 5) Push name/photo to Auth + Firestore (your helpers)
             await session.updateAuthProfile(displayName: n, photoURLString: finalPhoto)
             await session.upsertUserDoc(name: n, email: e, photoURLString: finalPhoto)
+            
+            
 
             // 🔧 Normalize Firestore field names: prefer "photoUrl", remove legacy "photoURL"
             if let uid = session.user?.uid {

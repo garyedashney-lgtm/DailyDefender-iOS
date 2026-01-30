@@ -13,9 +13,19 @@ final class SessionViewModel: ObservableObject {
     typealias AuthUser = FirebaseAuth.User
 
     @Published var user: AuthUser?
-    @Published var isPro: Bool = false          // derived from `tier`
+    @Published var isPro: Bool = false          // derived from `tier` OR active trial
     @Published var tier: UserTier = .free       // 3-level entitlements
     @Published var errorMessage: String?
+
+    // Trial UI/state
+    @Published var trialStatus: String? = nil
+    @Published var trialEndsAt: Timestamp? = nil
+    @Published var trialDaysRemaining: Int? = nil
+
+    // UI triggers (views will listen to these later)
+    @Published var shouldShowTrialStartModal: Bool = false
+    @Published var shouldShowTrialWarning: Bool = false
+    @Published var trialWarningDaysRemaining: Int? = nil
 
     private var userListener: ListenerRegistration?
 
@@ -43,12 +53,10 @@ final class SessionViewModel: ObservableObject {
                     // bind it now to the first uid we see.
                     if DeviceBindingManager.shared.boundUid == nil {
                         DeviceBindingManager.shared.boundUid = uid
-                        #if DEBUG
-                        print("📌 DeviceBindingManager: bound this device to uid=\(uid)")
-                        #endif
+                       
                     }
 
-                    // Live listen to entitlement flips (tier + legacy pro)
+                    // Live listen to entitlement flips (tier + trial + overrides)
                     self.userListener = self.db.collection("users").document(uid)
                         .addSnapshotListener { [weak self] snap, _ in
                             guard let self else { return }
@@ -56,9 +64,9 @@ final class SessionViewModel: ObservableObject {
                             self.applyEntitlementsFromData(data, uid: uid)
                         }
 
-                    // Seed then refresh entitlements
+                    // Seed then enforce trial then refresh entitlements
                     await self.runSeedIfNeeded()
-                    await self.refreshEntitlements()
+                    await self.refreshEntitlements()   // refreshEntitlements already enforces trial
                 } else {
                     // Signed out → reset entitlements
                     self.applyEntitlementsFromData(nil, uid: nil)
@@ -70,7 +78,7 @@ final class SessionViewModel: ObservableObject {
     deinit {
         userListener?.remove()
     }
-    
+
     // MARK: - Hydrate today's checkmarks from Firestore (cloud → phone)
 
     /// Pulls users/{uid}/daily/{yyyyMMdd} and applies it to local store + UserDefaults.
@@ -100,20 +108,47 @@ final class SessionViewModel: ObservableObject {
             // 2) Snapshot to UserDefaults so rolling windows / totals stay consistent
             UserDefaults.standard.set(completed, forKey: "daily_completed_\(todayKey)")
 
-            #if DEBUG
-            print("✅ hydrateTodayDailyToLocal: loaded \(completed.count) items for \(todayKey)")
-            #endif
+           
         } catch {
-            #if DEBUG
-            print("hydrateTodayDailyToLocal failed: \(error.localizedDescription)")
-            #endif
+          
         }
     }
 
     // MARK: - Entitlement resolution
 
-    /// Central place to map Firestore fields -> UserTier + isPro
+    /// Central place to map Firestore fields -> UserTier + isPro + trial UI fields
     private func applyEntitlementsFromData(_ data: [String: Any]?, uid: String?) {
+        // ---------------------------
+        // Trial read (needed for UI + trial entitlement)
+        // ---------------------------
+        let trialStatusNorm = (data?["trialStatus"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let trialEndsAt = data?["trialEndsAt"] as? Timestamp
+        let now = Date()
+
+        let isTrialActive: Bool = {
+            guard trialStatusNorm == "active",
+                  let end = trialEndsAt?.dateValue()
+            else { return false }
+            return now < end
+        }()
+
+        // Publish trial UI fields
+        self.trialStatus = trialStatusNorm
+        self.trialEndsAt = trialEndsAt
+
+        if isTrialActive, let end = trialEndsAt?.dateValue() {
+            let days = Calendar.current.dateComponents([.day], from: now, to: end).day
+            self.trialDaysRemaining = days.map { max(0, $0) }
+        } else {
+            self.trialDaysRemaining = nil
+        }
+
+        // ---------------------------
+        // Tier resolution
+        // ---------------------------
         let anyTier  = data?["tier"]
         let rawTier  = anyTier as? String
         let tierText = rawTier?
@@ -122,43 +157,41 @@ final class SessionViewModel: ObservableObject {
 
         let legacyPro = (data?["pro"] as? Bool) == true
 
-        #if DEBUG
-        print("🔎 Entitlements snapshot for uid=\(uid ?? "nil")")
-        print("   raw tier=\(rawTier ?? "nil"), normalized=\(tierText ?? "nil"), hasTier=\(anyTier != nil), legacyPro=\(legacyPro)")
-        #endif
+        // Manual override can force access (we’ll enforce later; here is just resolution)
+        let overrideText = (data?["tierOverride"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
 
         let resolvedTier: UserTier
 
-        if let tierText {
-            // ✅ Exact mapping for known tiers
-            switch tierText {
-            case "pro":
+        if let overrideText, !overrideText.isEmpty {
+            // override: "pro" | "amateur"
+            if overrideText == "pro" {
                 resolvedTier = .pro
-            case "amateur":
+            } else if overrideText == "amateur" {
                 resolvedTier = .amateur
-            case "free":
-                resolvedTier = .free
-            default:
-                // Unknown string → safest default is FREE
-                resolvedTier = .free
+            } else {
+                // unknown override -> fall back safely
+                resolvedTier = isTrialActive ? .pro : .free
+            }
+        } else if isTrialActive {
+            // ✅ ACTIVE TRIAL = PRO ENTITLEMENT
+            resolvedTier = .pro
+        } else if let tierText {
+            switch tierText {
+            case "pro":     resolvedTier = .pro
+            case "amateur": resolvedTier = .amateur
+            case "free":    resolvedTier = .free
+            default:        resolvedTier = .free
             }
         } else {
-            // No `tier` field at all:
-            // - If legacy pro true → Pro
-            // - Otherwise → Free
-            if legacyPro {
-                resolvedTier = .pro
-            } else {
-                resolvedTier = .free
-            }
+            resolvedTier = legacyPro ? .pro : .free
         }
 
         self.tier = resolvedTier
         self.isPro = (resolvedTier == .pro)
 
-        #if DEBUG
-        print("   → resolvedTier=\(resolvedTier) | isPro=\(self.isPro)")
-        #endif
+        
     }
 
     // MARK: - Auth
@@ -190,6 +223,9 @@ final class SessionViewModel: ObservableObject {
             applyEntitlementsFromData(nil, uid: nil)
             return
         }
+
+        await enforceTrialIfNeeded()
+
         do {
             let snap = try await db.collection("users").document(uid).getDocument()
             if let data = snap.data() {
@@ -198,10 +234,150 @@ final class SessionViewModel: ObservableObject {
                 applyEntitlementsFromData(nil, uid: nil)
             }
         } catch {
-            #if DEBUG
-            print("refreshEntitlements error for uid=\(uid): \(error.localizedDescription)")
-            #endif
+            
             applyEntitlementsFromData(nil, uid: nil)
+        }
+    }
+
+    // MARK: - Trial enforcement (30-day Pro trial)
+
+    /// Rules:
+    /// - If source == "stripe" => never trial
+    /// - If tierOverride is set => no trial behavior
+    /// - If tier != free => no trial behavior
+    /// - If tier == free AND trialProvided != true AND trialStartedAt missing => start trial
+    /// - If active and expired => end trial + revert to free
+    /// - Warnings at 7/3/1 days left
+    func enforceTrialIfNeeded() async {
+        guard let uid = user?.uid else { return }
+        let userRef = db.collection("users").document(uid)
+
+        do {
+            let snap = try await userRef.getDocument()
+            guard let data = snap.data() else { return }
+
+            // Stripe precedence: never trial again
+            let source = (data["source"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            if source == "stripe" {
+                await MainActor.run {
+                    self.shouldShowTrialStartModal = false
+                    self.shouldShowTrialWarning = false
+                    self.trialWarningDaysRemaining = nil
+                }
+                return
+            }
+
+            // Determine effective tier from Firestore (treat missing as free)
+            let tierText = (data["tier"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+
+            let isFree = (tierText == nil || tierText == "free" || tierText == "")
+            if !isFree {
+                // Not free -> no trial behavior needed
+                await MainActor.run {
+                    self.shouldShowTrialWarning = false
+                    self.trialWarningDaysRemaining = nil
+                }
+                return
+            }
+
+            let trialProvided = (data["trialProvided"] as? Bool) == true
+            let status = (data["trialStatus"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let startedAt = data["trialStartedAt"] as? Timestamp
+            let endsAt = data["trialEndsAt"] as? Timestamp
+
+            // 1) Start trial if FREE and trialProvided is NOT true yet (first time ever)
+            if trialProvided != true && startedAt == nil {
+                let durationDays = 30
+                let now = Date()
+                let end = Calendar.current.date(byAdding: .day, value: durationDays, to: now)
+                    ?? now.addingTimeInterval(30 * 86400)
+
+                try await userRef.setData([
+                    "trialProvided": true,
+                    "trialStatus": "active",
+                    "trialDurationDays": durationDays,
+                    "trialStartedAt": FieldValue.serverTimestamp(),
+                    "trialEndsAt": Timestamp(date: end),
+                    "trialEndedAt": FieldValue.delete()
+                ], merge: true)
+                
+               
+                
+               
+
+                await MainActor.run {
+                    self.shouldShowTrialStartModal = true
+                    self.shouldShowTrialWarning = false
+                    self.trialWarningDaysRemaining = nil
+                }
+                return
+            }
+
+            // 2) If active, enforce expiry + warning flags
+            if status == "active", let endsAt {
+                let now = Date()
+                if now >= endsAt.dateValue() {
+                    // Expire -> revert to Free (remove tier field)
+                    try await userRef.setData([
+                        "trialStatus": "ended",
+                        "trialEndedAt": FieldValue.serverTimestamp()
+                    ], merge: true)
+
+                    await MainActor.run {
+                        self.shouldShowTrialStartModal = false
+                        self.shouldShowTrialWarning = false
+                        self.trialWarningDaysRemaining = nil
+                    }
+                    return
+                } else {
+                    // Warning days: 7, 3, 1
+                    let daysLeft = daysBetweenNowAnd(endsAt) ?? 0
+                    let lastShown = (data["lastTrialWarningShown"] as? String)
+
+                    var shouldWarn = false
+                    var warningBucket: String? = nil
+
+                    if daysLeft <= 7 && daysLeft >= 4 && lastShown != "7" {
+                        shouldWarn = true
+                        warningBucket = "7"
+                    } else if daysLeft <= 3 && daysLeft >= 2 && lastShown != "3" {
+                        shouldWarn = true
+                        warningBucket = "3"
+                    } else if daysLeft == 1 && lastShown != "1" {
+                        shouldWarn = true
+                        warningBucket = "1"
+                    }
+
+                    if shouldWarn, let bucket = warningBucket {
+                        try await userRef.setData(
+                            ["lastTrialWarningShown": bucket],
+                            merge: true
+                        )
+
+                        // Show the BUCKET number (7 / 3 / 1) in the title — not the raw daysLeft.
+                        let bucketDays: Int = Int(bucket) ?? daysLeft
+
+                        await MainActor.run {
+                            // ✅ Set the title data FIRST so SwiftUI has it when the alert is created.
+                            self.trialWarningDaysRemaining = bucketDays
+                            self.shouldShowTrialWarning = true
+                        }
+                    } else {
+                        await MainActor.run {
+                            self.shouldShowTrialWarning = false
+                            self.trialWarningDaysRemaining = nil
+                        }
+                    }
+                }
+            }
+        } catch {
+           
         }
     }
 
@@ -219,9 +395,7 @@ final class SessionViewModel: ObservableObject {
 
         do {
             let userSnap = try await userDoc.getDocument()
-            #if DEBUG
-            print("runSeedIfNeeded: user doc exists? \(userSnap.exists ? "yes" : "no")")
-            #endif
+           
 
             await FirestoreSeeder.seedOrMergeUser(
                 db: db,
@@ -238,14 +412,10 @@ final class SessionViewModel: ObservableObject {
                     "version": 1
                 ], merge: true)
             } catch {
-                #if DEBUG
-                print("runSeedIfNeeded: could not write seeds doc (ok): \(error.localizedDescription)")
-                #endif
+               
             }
         } catch {
-            #if DEBUG
-            print("runSeedIfNeeded: read users/{uid} failed; attempting seed anyway: \(error.localizedDescription)")
-            #endif
+             
 
             await FirestoreSeeder.seedOrMergeUser(
                 db: db,
@@ -261,9 +431,7 @@ final class SessionViewModel: ObservableObject {
                     "version": 1
                 ], merge: true)
             } catch {
-                #if DEBUG
-                print("runSeedIfNeeded: seeds write failed (ok): \(error.localizedDescription)")
-                #endif
+                 
             }
         }
     }
@@ -286,16 +454,15 @@ final class SessionViewModel: ObservableObject {
             // Refresh cached user
             self.user = Auth.auth().currentUser
         } catch {
-            #if DEBUG
-            print("updateAuthProfile error: \(error.localizedDescription)")
-            #endif
+             
         }
     }
 
     /// Upsert users/{uid} with displayName/emailLower/**photoUrl** (canonical), without touching `pro`.
     /// Also deletes legacy `photoURL` if present to avoid duplicates.
     func upsertUserDoc(name: String, email: String, photoURLString: String?) async {
-        guard let uid = user?.uid else { return }
+        let uid = user?.uid ?? Auth.auth().currentUser?.uid
+        guard let uid else { return }
 
         var data: [String: Any] = [
             "displayName": name,
@@ -319,9 +486,7 @@ final class SessionViewModel: ObservableObject {
                 "photoURL": FieldValue.delete()
             ])
         } catch {
-            #if DEBUG
-            print("upsertUserDoc failed: \(error.localizedDescription)")
-            #endif
+             
         }
     }
 
@@ -331,9 +496,7 @@ final class SessionViewModel: ObservableObject {
         do {
             try await db.collection("users").document(uid).setData(fields, merge: true)
         } catch {
-            #if DEBUG
-            print("mergeUserDoc error: \(error.localizedDescription)")
-            #endif
+             
         }
     }
 
@@ -352,9 +515,7 @@ final class SessionViewModel: ObservableObject {
                 "updatedAt": Timestamp(date: Date())
             ], merge: true)
         } catch {
-            #if DEBUG
-            print("syncTotalsFromLocal failed: \(error.localizedDescription)")
-            #endif
+             
         }
     }
 
@@ -388,9 +549,7 @@ final class SessionViewModel: ObservableObject {
                 "updatedAt": FieldValue.serverTimestamp()
             ], merge: true)
         } catch {
-            #if DEBUG
-            print("uploadTodayDailyFromLocal failed: \(error.localizedDescription)")
-            #endif
+             
         }
     }
 
@@ -502,6 +661,15 @@ final class SessionViewModel: ObservableObject {
         let total60 = all4_60 + phys_60 + piety_60 + people_60 + prod_60
 
         return TripleWindow(d7: total7, d30: total30, d60: total60)
+    }
+
+    // MARK: - Trial helpers
+
+    private func daysBetweenNowAnd(_ future: Timestamp?) -> Int? {
+        guard let future else { return nil }
+        let seconds = future.dateValue().timeIntervalSince(Date())
+        let days = Int(ceil(seconds / 86400.0))
+        return max(days, 0)
     }
 
     // MARK: - Error mapping

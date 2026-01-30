@@ -1,72 +1,135 @@
 import SwiftUI
+import Combine
 
 struct RootView: View {
+    @Binding var isAppSplashVisible: Bool
     @EnvironmentObject var store: HabitStore
-    @EnvironmentObject var session: SessionViewModel   // 🔹 current user + tier
+    @EnvironmentObject var session: SessionViewModel
 
     // Tabs
     @State private var tab: IosPage = .daily
 
-    // Post-registration brand splash (spinner)
-    @State private var showBrandSplash = false
-
-    // Center toast so keyboard can't cover it
-    @State private var toastMessage: String?
-    @State private var showToast = false
+    // ✅ Post-registration splash using SAME ShieldSplashView behavior
+    @State private var showPostRegistrationSplash = false
 
     var body: some View {
         ZStack {
             AppTheme.navy900.ignoresSafeArea()
 
-            // 🔐 Top-level auth gate:
-            // If not signed in, show auth flow only.
+            // 🔐 Top-level auth gate
             if session.user == nil {
                 AuthRootView(
                     onAuthenticated: {
-                        // When auth completes, default to Daily tab
                         tab = .daily
                     }
                 )
                 .environmentObject(store)
                 .environmentObject(session)
             } else {
-                // Signed-in experience: main tabbed app
                 Content(tab: $tab)
                     .environmentObject(store)
                     .environmentObject(session)
             }
 
-            // Center toast overlay (independent of keyboard)
-            if showToast, let msg = toastMessage {
-                CenterToastView(message: msg)
-                    .allowsHitTesting(false)
-                    .transition(.scale.combined(with: .opacity))
-                    .zIndex(2)
-                    .onAppear {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
-                            withAnimation { showToast = false }
-                            // Clear the one-shot message so it won't retrigger
-                            store.lastMailchimpMessage = nil
+            // ✅ Post-registration splash overlay (matches app launch splash)
+            if showPostRegistrationSplash {
+                ShieldSplashView(
+                    onRevealStart: {
+                        // no-op here; RootView is already visible
+                    },
+                    onFinish: {
+                        withAnimation(.easeInOut(duration: 0.20)) {
+                            showPostRegistrationSplash = false
+                            isAppSplashVisible = false   // ✅ now alerts can present
                         }
                     }
+                )
+                .transition(.opacity)
+                .zIndex(10)
             }
         }
-        // 🔔 Mailchimp / registration messages → just show toast
-        .onReceive(store.$lastMailchimpMessage.compactMap { $0 }) { msg in
-            toastMessage = msg
-            withAnimation { showToast = true }
+
+        // ✅ One-shot trigger (cannot "replay" on view updates)
+        .onReceive(store.brandSplashTrigger) { _ in
+            // Block alerts while this splash runs
+            isAppSplashVisible = true
+            showPostRegistrationSplash = true
         }
-        // Listen for one-time post-registration spinner trigger from HabitStore
-        .onReceive(store.$revealBrandAfterRegistration) { flag in
-            guard flag else { return }
-            showBrandSplash = true
+
+        // 🎁 Trial start modal
+        .alert(
+            "Your 30-day Pro Trial has started",
+            isPresented: Binding(
+                get: { canPresentAlerts && session.shouldShowTrialStartModal },
+                set: { session.shouldShowTrialStartModal = $0 }
+            )
+        ) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            let endLine: String = {
+                if let endsAt = session.trialEndsAt {
+                    return "Your trial ends on \(endsAt.dateValue().formatted(date: .abbreviated, time: .omitted))."
+                } else {
+                    return "Enjoy Pro features for the next 30 days."
+                }
+            }()
+
+            Text(
+                """
+                \(endLine)
+
+                After it ends, you will revert to Free status and Weekly, Goals, and Journal data and entries will not be accessible unless you upgrade.
+
+                To keep copies of this data prior to reverting to Free status, use the Share button available on these screens to send the entries to your own email for later access.
+                """
+            )
         }
-        .fullScreenCover(isPresented: $showBrandSplash, onDismiss: {
-            // Reset store flag so it won't loop
-            store.revealBrandAfterRegistration = false
-        }) {
-            ShieldBrandFullscreen()
+
+        // ⚠️ Trial warnings (7/3/1 days remaining)
+        .alert(
+            trialWarningTitle,
+            isPresented: Binding(
+                get: { canPresentAlerts && session.shouldShowTrialWarning },
+                set: { session.shouldShowTrialWarning = $0 }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                session.shouldShowTrialWarning = false
+            }
+        } message: {
+            Text(trialWarningMessage)
         }
+    }
+
+    private var canPresentAlerts: Bool {
+        !isAppSplashVisible && !showPostRegistrationSplash
+    }
+
+    private var trialWarningTitle: String {
+        let d = session.trialWarningDaysRemaining
+        if let d {
+            return d == 1 ? "Pro Trial ends tomorrow" : "Pro Trial ends in \(d) days"
+        }
+        return "Pro Trial ending soon"
+    }
+
+    private var trialWarningMessage: String {
+        let endDateText: String = {
+            if let endsAt = session.trialEndsAt {
+                return endsAt.dateValue().formatted(date: .abbreviated, time: .omitted)
+            }
+            return "soon"
+        }()
+
+        return """
+        Your Pro trial ends on \(endDateText).
+
+        After it ends, you will revert to Free status and Weekly, Goals, and Journal data and entries will not be accessible unless you upgrade.
+
+        To keep copies of this data prior to reverting to Free status, use the Share button available on these screens to send the entries to your own email for later access.
+
+        Your data is not deleted unless you delete the app off your phone. It remains stored on your device even in Free status and will be available again if you upgrade later.
+        """
     }
 }
 
@@ -137,65 +200,6 @@ private struct Content: View {
                 versionCode: versionCode,
                 weekKey: weekKey
             )
-        }
-    }
-}
-
-// MARK: - Simple center toast (keyboard-safe)
-
-private struct CenterToastView: View {
-    let message: String
-    var body: some View {
-        VStack {
-            Spacer()
-            Text(message)
-                .font(.footnote.weight(.semibold))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(AppTheme.surfaceUI)
-                .foregroundStyle(AppTheme.textPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .shadow(radius: 6)
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 40)
-    }
-}
-
-// MARK: - Placeholders you already had
-
-private struct PlaceholderView: View {
-    let title: String
-    var body: some View {
-        ZStack {
-            AppTheme.navy900.ignoresSafeArea()
-            Text("\(title) — Coming Soon")
-                .foregroundStyle(AppTheme.textSecondary)
-                .padding()
-        }
-    }
-}
-
-private struct GoalsPlaceholderView: View {
-    var body: some View {
-        ZStack {
-            AppTheme.navy900.ignoresSafeArea()
-            Text("Goals — Coming Soon")
-                .foregroundStyle(AppTheme.textSecondary)
-                .padding()
-        }
-    }
-}
-
-private struct JournalPlaceholderView: View {
-    var body: some View {
-        ZStack {
-            AppTheme.navy900.ignoresSafeArea()
-            Text("Journal — Coming Soon")
-                .foregroundStyle(AppTheme.textSecondary)
-                .padding()
         }
     }
 }

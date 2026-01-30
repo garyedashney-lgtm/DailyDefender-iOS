@@ -113,7 +113,7 @@ struct DailyView: View {
                     .scrollDismissesKeyboard(.interactively)
                     .scrollContentBackground(.hidden)
                     .modifier(CompactListTweaks())
-                    .withKeyboardDismiss()
+                    
 
                     // ⬇️ Confetti overlay — always on top of the List/toolbar
                     if showConfetti {

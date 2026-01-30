@@ -26,6 +26,8 @@ enum FirestoreSeeder {
 
             if !existing.exists {
                 toMerge["createdAt"] = FieldValue.serverTimestamp()
+                // trialProvided means "trial has already been used/consumed"
+                toMerge["trialProvided"] = false
             }
 
             // Idempotent default counters / fields (only set if missing)
@@ -60,9 +62,7 @@ enum FirestoreSeeder {
             //
             //    So we explicitly *skip* allowlist tier sync if the doc already existed.
             guard !existing.exists else {
-                #if DEBUG
-                print("Seeder: user doc already exists, skipping allowlist tier sync for uid=\(uid)")
-                #endif
+                
                 return
             }
 
@@ -70,9 +70,7 @@ enum FirestoreSeeder {
             do {
                 let emailLower = email.lowercased()
                 guard !emailLower.isEmpty else {
-                    #if DEBUG
-                    print("Seeder: empty email, skipping allowlist lookup")
-                    #endif
+                
                     return
                 }
 
@@ -80,9 +78,7 @@ enum FirestoreSeeder {
                 let allowSnap = try await allowRef.getDocument()
 
                 guard let allowData = allowSnap.data() else {
-                    #if DEBUG
-                    print("Seeder: no allowlist doc for \(emailLower)")
-                    #endif
+                 
                     return
                 }
 
@@ -93,6 +89,7 @@ enum FirestoreSeeder {
                         .trimmingCharacters(in: .whitespacesAndNewlines)
                     if !allowTier.isEmpty {
                         update["tier"] = allowTier
+                        update["trialProvided"] = false
                     }
                 }
 
@@ -109,23 +106,15 @@ enum FirestoreSeeder {
 
                 if !update.isEmpty {
                     try await userRef.updateData(update)
-                    #if DEBUG
-                    print("Seeder: initial tier seeded from allowlist for \(emailLower): \(update)")
-                    #endif
+                   
                 } else {
-                    #if DEBUG
-                    print("Seeder: allowlist doc present but no usable tier/source for \(emailLower)")
-                    #endif
+                    
                 }
             } catch {
-                #if DEBUG
-                print("Seeder: allowlist tier seed skipped/failed: \(error.localizedDescription)")
-                #endif
+                
             }
         } catch {
-            #if DEBUG
-            print("Seeder: failed with error \(error.localizedDescription)")
-            #endif
+            
         }
     }
 }

@@ -145,16 +145,10 @@ final class HabitStore: ObservableObject {
     @Published var completed: Set<String>
     @Published var profile: UserProfile
 
-    // Toast text consumers listen to (Registration/ProfileEdit/RootView)
-    @Published var lastMailchimpMessage: String?
-
-    // Trigger a one-time brand spinner after registration
-    @Published var revealBrandAfterRegistration: Bool = false
+    // ✅ One-shot brand splash trigger (NO replay like @Published Bool)
+    let brandSplashTrigger = PassthroughSubject<Void, Never>()
 
     private var midnightCancellable: AnyCancellable?
-
-    // Track latest in-flight Mailchimp call to avoid race conditions
-    private var mailchimpCallSerial: Int = 0
 
     // Helper to build yyyyMMdd key for stats snapshots
     private func statsDayKey(for localDate: Date) -> String {
@@ -289,7 +283,7 @@ final class HabitStore: ObservableObject {
         }
     }
 
-    // Persist profile + trigger Mailchimp if needed
+    // Persist profile + mark registered
     func saveProfile(
         name: String,
         email: String,
@@ -297,8 +291,9 @@ final class HabitStore: ObservableObject {
         isRegistered: Bool? = nil
     ) {
         let d = UserDefaults.standard
-        let oldEmail = profile.email.trimmingCharacters(in: .whitespacesAndNewlines)
         let newEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let wasRegistered = self.profile.isRegistered
 
         var p = self.profile
         p.name = name
@@ -314,10 +309,6 @@ final class HabitStore: ObservableObject {
         } else {
             d.removeObject(forKey: Keys.profilePhoto)
         }
-        if p.isRegistered {
-            d.set(true, forKey: Keys.profileRegisteredV2)
-            d.set("true", forKey: Keys.profileRegisteredLegacy)
-        }
 
         if let path = photoPath, let data = try? Data(contentsOf: URL(fileURLWithPath: path)) {
             AvatarVault.save(data)
@@ -325,41 +316,15 @@ final class HabitStore: ObservableObject {
             AvatarVault.clear()
         }
 
-        // 🔔 Mailchimp trigger
-        if !newEmail.isEmpty, oldEmail.caseInsensitiveCompare(newEmail) != .orderedSame {
-            // Clear previous message so .onReceive always fires, even if same text repeats
-            self.lastMailchimpMessage = nil
+        // If caller indicates registration, persist it.
+        if p.isRegistered {
+            d.set(true, forKey: Keys.profileRegisteredV2)
+            d.set("true", forKey: Keys.profileRegisteredLegacy)
+        }
 
-            // Bump serial to identify the "latest" call and avoid racey overwrites
-            mailchimpCallSerial &+= 1
-            let callId = mailchimpCallSerial
-
-            Task {
-                let result = await MailchimpService.subscribe(
-                    email: newEmail,
-                    firstName: name,
-                    lastName: nil
-                )
-                print("📬 Mailchimp response:", result.message)
-
-                await MainActor.run {
-                    // Only publish if this is still the latest in-flight call
-                    guard callId == self.mailchimpCallSerial else { return }
-                    self.lastMailchimpMessage = result.message
-                }
-
-                // Mark registered on success (only once)
-                if result.ok, await MainActor.run(body: { self.profile.isRegistered == false }) {
-                    await MainActor.run {
-                        var now = self.profile
-                        now.isRegistered = true
-                        self.profile = now
-                        d.set(true, forKey: Keys.profileRegisteredV2)
-                        d.set("true", forKey: Keys.profileRegisteredLegacy)
-                        self.revealBrandAfterRegistration = true
-                    }
-                }
-            }
+        // ✅ Trigger brand splash ONLY on the transition false -> true (registration just happened)
+        if !wasRegistered && p.isRegistered {
+            brandSplashTrigger.send(())
         }
     }
 

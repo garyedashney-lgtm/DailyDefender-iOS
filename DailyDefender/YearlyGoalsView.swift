@@ -125,8 +125,10 @@ struct YearlyGoalsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 200)   // generous bottom padding for scrolling above keyboard
             }
+            // ✅ Same improvement as Seasons/Monthly
+            .scrollDismissesKeyboard(.interactively)
         }
-        .withKeyboardDismiss()
+
         .navigationBarBackButtonHidden(true)
 
         // Toolbar
@@ -177,6 +179,12 @@ struct YearlyGoalsView: View {
                 .offset(y: -2)
                 .onTapGesture { showProfileEdit = true }
                 .accessibilityLabel("Profile")
+            }
+
+            // ✅ Keyboard toolbar Done (same as Seasons)
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { hideKeyboardNow() }
             }
         }
         .navigationBarTitleDisplayMode(.inline)

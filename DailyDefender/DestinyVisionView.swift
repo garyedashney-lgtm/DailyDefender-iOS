@@ -183,8 +183,6 @@ struct DestinyVisionView: View {
             }
         }
 
-        // Global tap to dismiss (keeps Return as newline in TextEditor)
-        .simultaneousGesture(TapGesture().onEnded { hideKeyboard() })
 
         // Hide default back chevron; rely on shield + footer Goals pop
         .navigationBarBackButtonHidden(true)
@@ -294,6 +292,7 @@ private struct DestinyVisionPillarEditor: View {
                     .foregroundStyle(AppTheme.textSecondary.opacity(0.8))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 10)
+                    .allowsHitTesting(false)
             }
 
             TextEditor(text: $text)

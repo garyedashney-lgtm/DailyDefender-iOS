@@ -182,7 +182,7 @@ struct CurrentStateView: View {
                 .accessibilityLabel("Profile")
             }
         }
-        .withKeyboardDismiss()
+        
 
         // Hide default back chevron; rely on shield + footer Goals pop
         .navigationBarBackButtonHidden(true)

@@ -134,8 +134,10 @@ struct MonthlyGoalsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 200)
             }
+            // ✅ Makes scrolling feel modern + avoids needing global "tap to dismiss"
+            .scrollDismissesKeyboard(.interactively)
         }
-        .withKeyboardDismiss()
+
         // Hide default back chevron to match main Goals header style
         .navigationBarBackButtonHidden(true)
 
@@ -186,6 +188,12 @@ struct MonthlyGoalsView: View {
                 .offset(y: -2)
                 .onTapGesture { showProfileEdit = true }
                 .accessibilityLabel("Profile")
+            }
+
+            // ✅ KEYBOARD toolbar Done (prevents needing global tap-to-dismiss)
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { hideKeyboardNow() }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -601,9 +609,9 @@ struct MonthlyGoalsView: View {
             let newId = nextIdAndBump(&counter)
             goals.insert(GoalEntry(id: newId, text: "", done: false), at: index + 1)
             persistNow()
-                DispatchQueue.main.async {
-                    focusedRow = newId
-                }
+            DispatchQueue.main.async {
+                focusedRow = newId
+            }
         }
 
         switch pillar {

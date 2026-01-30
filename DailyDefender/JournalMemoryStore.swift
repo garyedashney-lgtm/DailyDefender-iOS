@@ -65,9 +65,7 @@ final class JournalMemoryStore: ObservableObject {
             let data = try JSONEncoder().encode(payload)
             try data.write(to: fileURL, options: [.atomic])
         } catch {
-            #if DEBUG
-            print("JournalMemoryStore save error:", error)
-            #endif
+         
         }
     }
 
@@ -79,11 +77,7 @@ final class JournalMemoryStore: ObservableObject {
             return mapped.sorted { $0.dateMillis > $1.dateMillis }
         } catch {
             // First run or decode error → start fresh
-            #if DEBUG
-            if (error as NSError).code != NSFileReadNoSuchFileError {
-                print("JournalMemoryStore load error:", error)
-            }
-            #endif
+            
             return []
         }
     }

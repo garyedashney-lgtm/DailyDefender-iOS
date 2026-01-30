@@ -14,9 +14,26 @@ struct BrandShieldHost<Content: View>: View {
     let content: (@escaping () -> Void) -> Content
 
     var body: some View {
-        content { showBrand = true }
-            .fullScreenCover(isPresented: $showBrand) {
-                ShieldBrandFullscreen()
+        ZStack {
+            content { showBrand = true }
+
+            if showBrand {
+                ShieldSplashView(
+                    onRevealStart: { },
+                    onFinish: {
+                        withAnimation(.easeInOut(duration: 0.20)) {
+                            showBrand = false
+                        }
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(10)
             }
+        }
+        // ✅ Critical: if this host is being dismissed / navigated away,
+        // never let a leftover `showBrand` state flash a splash.
+        .onDisappear {
+            showBrand = false
+        }
     }
 }

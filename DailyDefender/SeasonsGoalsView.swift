@@ -120,9 +120,12 @@ struct SeasonsGoalsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 200) // generous for keyboard + Save
             }
+            // ✅ Same as Monthly improvement
+            .scrollDismissesKeyboard(.interactively)
         }
-        .withKeyboardDismiss()
+
         .navigationBarBackButtonHidden(true)
+
         .toolbar {
             // LEFT — powernlove shield → full screen
             ToolbarItem(placement: .navigationBarLeading) {
@@ -137,6 +140,7 @@ struct SeasonsGoalsView: View {
                 }
                 .accessibilityLabel("Open page shield")
             }
+
             // CENTER — Title (no subtitle)
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {
@@ -147,6 +151,7 @@ struct SeasonsGoalsView: View {
                 }
                 .padding(.bottom, 10)
             }
+
             // RIGHT — Profile avatar → ProfileEdit
             ToolbarItem(placement: .navigationBarTrailing) {
                 Group {
@@ -166,6 +171,12 @@ struct SeasonsGoalsView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { showProfileEdit = true }
                 .accessibilityLabel("Profile")
+            }
+
+            // ✅ Keyboard toolbar Done (same as Monthly)
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { hideKeyboardNow() }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -684,6 +695,10 @@ struct SeasonsGoalsView: View {
     }
 
     private func shareSeasonGoals() {
+        // ✅ Commit any composing text before sharing (like Monthly)
+        hideKeyboardNow()
+        persistNow(includeTrailingNew: true)
+
         let text = buildSeasonSummaryText()
         let av = UIActivityViewController(activityItems: [text], applicationActivities: nil)
 
@@ -692,13 +707,8 @@ struct SeasonsGoalsView: View {
             root.present(av, animated: true)
         }
     }
-}
 
-// MARK: - keyboard helper
-fileprivate extension View {
-    func hideKeyboardNow() {
-        #if canImport(UIKit)
+    private func hideKeyboardNow() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        #endif
     }
 }

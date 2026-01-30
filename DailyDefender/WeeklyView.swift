@@ -266,7 +266,7 @@ struct WeeklyView: View {
                     .scrollDismissesKeyboard(.interactively)
                     .modifier(CompactListTweaks())
                 }
-                .withKeyboardDismiss()
+                
                 // Fixed headroom when an editor is focused (no keyboard math)
                 .safeAreaInset(edge: .bottom) {
                     Color.clear.frame(height: anyEditorFocused ? 96 : 48)

@@ -41,7 +41,7 @@ struct DailyDefenderApp: App {
                 AppTheme.navy900.ignoresSafeArea()
 
                 // ✅ Root is now the unified auth + tabs shell
-                RootView()
+                RootView(isAppSplashVisible: $showSplash)
                     .environmentObject(session)
                     .environmentObject(store)          // single shared store
                     .tint(AppTheme.appGreen)

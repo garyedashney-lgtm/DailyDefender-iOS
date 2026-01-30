@@ -70,7 +70,7 @@ struct GoalsView: View {
                         // Destiny Vision
                         NavigationLink {
                             DestinyVisionView()
-                                .withKeyboardDismiss()
+                                
                                 .environmentObject(store) // keeps it consistent with CurrentStateView
                         } label: {
                             GoalsCardRowSimple(

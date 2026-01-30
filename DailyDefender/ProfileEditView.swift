@@ -572,7 +572,7 @@ extension ProfileEditView {
                 name: n,
                 email: e,
                 photoPath: finalPhotoPath,
-                isRegistered: true
+                isRegistered: store.profile.isRegistered
             )
 
             await session.updateAuthProfile(
@@ -856,21 +856,55 @@ extension ProfileEditView {
             let snapshot = try await docRef.getDocument()
 
             var firestoreEmail: String? = nil
-            var tierLabel = "Free"
+            var label = "Free"
 
             if let data = snapshot.data() {
                 firestoreEmail = (data["email"] as? String)?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
 
-                if let rawTier = (data["tier"] as? String) ??
-                    (data["appLevel"] as? String) ??
-                    (data["plan"] as? String) {
-                    let normalized = rawTier.uppercased()
-                    switch normalized {
-                    case "FREE": tierLabel = "Free"
-                    case "AMATEUR", "STANDARD": tierLabel = "Standard"
-                    case "PRO": tierLabel = "Pro"
-                    default: tierLabel = rawTier
+                // -------------------------
+                // Trial label override
+                // -------------------------
+                let trialStatus = (data["trialStatus"] as? String)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased()
+
+                let trialEndsAt = data["trialEndsAt"] as? Timestamp
+                let now = Date()
+
+                if trialStatus == "active",
+                   let ends = trialEndsAt?.dateValue(),
+                   now < ends {
+
+                    let daysLeft = max(
+                        0,
+                        Calendar.current.dateComponents([.day], from: now, to: ends).day ?? 0
+                    )
+
+                    let df = DateFormatter()
+                    df.dateFormat = "MMM d"
+                    let endText = df.string(from: ends)
+
+                    label = "Pro Trial (\(daysLeft) days left) — ends \(endText)"
+                } else {
+                    // -------------------------
+                    // Normal tier label
+                    // -------------------------
+                    if let rawTier = (data["tier"] as? String) ??
+                        (data["appLevel"] as? String) ??
+                        (data["plan"] as? String) {
+
+                        let normalized = rawTier.uppercased()
+                        switch normalized {
+                        case "FREE":
+                            label = "Free"
+                        case "AMATEUR", "STANDARD":
+                            label = "Standard"
+                        case "PRO":
+                            label = "Pro"
+                        default:
+                            label = rawTier
+                        }
                     }
                 }
             }
@@ -886,7 +920,7 @@ extension ProfileEditView {
 
             await MainActor.run {
                 self.email = finalEmail
-                self.appLevelLabel = tierLabel
+                self.appLevelLabel = label
 
                 store.saveProfile(
                     name: store.profile.name ?? self.name,
