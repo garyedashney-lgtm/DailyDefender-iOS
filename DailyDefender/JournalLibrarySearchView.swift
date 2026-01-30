@@ -52,7 +52,7 @@ private struct SharePayload: Identifiable {
 
 // MARK: - Type classification (Android parity)
 enum JournalTypeIOS: CaseIterable {
-    case tenR, cage, gratitude, selfCare, blessingTally, free, css, dvs, wcs
+    case tenR, cage, gratitude, selfCare, blessingTally, free, css, dvs, wcs, dcs
 }
 
 private func pillCode(_ t: JournalTypeIOS) -> String {
@@ -66,6 +66,7 @@ private func pillCode(_ t: JournalTypeIOS) -> String {
     case .css: return "CSS"
     case .dvs: return "DVS"
     case .wcs: return "WCS"
+    case .dcs: return "DCS"
     }
 }
 private func displayName(_ t: JournalTypeIOS) -> String {
@@ -79,6 +80,7 @@ private func displayName(_ t: JournalTypeIOS) -> String {
     case .css: return "Current State Snapshot"
     case .dvs: return "Destiny Vision Snapshot"
     case .wcs: return "Weekly Check-In Snapshot"
+    case .dcs: return "Daily Checklist Snapshot"
     }
 }
 private func pillEmoji(_ t: JournalTypeIOS) -> String {
@@ -162,6 +164,21 @@ private func looksLikeWeeklyCheckInSnapshot(_ title: String, _ content: String) 
     let hdr = #"(?m)^\s*📅\s*Weekly Check-In\s*Snapshot\s*\("#
     return content.range(of: hdr, options: .regularExpression) != nil
 }
+private func looksLikeDailyChecklistSnapshot(_ title: String, _ content: String) -> Bool {
+    let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if hasPrefixCI(t, "DCS:")
+        || hasPrefixCI(t, "Daily Checklist Snapshot")
+        || hasPrefixCI(t, "Daily Checklist — Snapshot")
+        || hasPrefixCI(t, "Daily Defender Actions Snapshot") {
+        return true
+    }
+
+    // Matches your Daily snapshot body header:
+    // "📅 Daily Checklist Snapshot (yyyy-MM-dd HH:mm)"
+    let hdr = #"(?m)^\s*📅\s*Daily Checklist\s*Snapshot\s*\("#
+    return content.range(of: hdr, options: .regularExpression) != nil
+}
 
 private func classifyJournalType(_ e: JournalEntryIOS) -> JournalTypeIOS {
     let title = e.title
@@ -170,6 +187,7 @@ private func classifyJournalType(_ e: JournalEntryIOS) -> JournalTypeIOS {
     if looksLikeCurrentStateSnapshot(title, content) { return .css }
     if looksLikeDestinyVisionSnapshot(title, content) { return .dvs }
     if looksLikeWeeklyCheckInSnapshot(title, content) { return .wcs }
+    if looksLikeDailyChecklistSnapshot(title, content) { return .dcs }
     if looksLikeTenR(title, content) { return .tenR }
     if looksLikeCageTheWolf(content) { return .cage }
     if looksLikeSelfCareWriting(content) || hasPrefixCI(title, "Self Care Writing") { return .selfCare }

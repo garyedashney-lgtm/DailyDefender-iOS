@@ -6,25 +6,28 @@ import UIKit
 struct DailyView: View {
     @EnvironmentObject var store: HabitStore
     @EnvironmentObject var session: SessionViewModel
-
+    
     // Celebration
     @State private var showConfetti = false
     @State private var audioPlayer: AVAudioPlayer?
-
+    
     // Victory video
     @State private var showVictoryModal = false
-
+    
     // Profile / Shields
     @State private var showFourPs = false
     @State private var goProfileEdit = false
-
+    
     // Keyboard state
     @State private var keyboardVisible = false
     @State private var keyboardHeight: CGFloat = 0
-
+    
     // Editor focus state (for auto headroom + scroll like Weekly)
     @State private var anyEditorFocused = false
-
+    
+    // Save-to-journal alert (Daily)
+    @State private var showSavedAlert = false
+    
     // yyyy-MM-dd
     private var todayString: String {
         let f = DateFormatter()
@@ -32,7 +35,7 @@ struct DailyView: View {
         f.dateFormat = "yyyy-MM-dd"
         return f.string(from: Date())
     }
-
+    
     // Pillar IDs (match Android)
     private func pillarId(_ p: Pillar) -> String {
         switch p {
@@ -42,39 +45,39 @@ struct DailyView: View {
         case .Production: return "pillar_prod"
         }
     }
-
+    
     // Progress
     private let totalPossible = 4
     private var completedCount: Int {
         Pillar.allCases.filter { store.completed.contains(pillarId($0)) }.count
     }
     private var progress: Double { Double(completedCount) / Double(totalPossible) }
-
+    
     // Celebration keys
     private var celebrate2Key: String { "celebrated2_\(todayString)" }
     private var prev2Key: String      { "prev2_\(todayString)" }
     private var celebrate4Key: String { "celebrated4_\(todayString)" }
     private var prev4Key: String      { "prev4_\(todayString)" }
-
+    
     private var hasCelebrated2: Bool { UserDefaults.standard.bool(forKey: celebrate2Key) }
     private var prevAtLeast2: Bool   { UserDefaults.standard.bool(forKey: prev2Key) }
     private func setCelebrated2(_ v: Bool) { UserDefaults.standard.set(v, forKey: celebrate2Key) }
     private func setPrev2(_ v: Bool)       { UserDefaults.standard.set(v, forKey: prev2Key) }
-
+    
     private var hasCelebrated4: Bool { UserDefaults.standard.bool(forKey: celebrate4Key) }
     private var prevAtLeast4: Bool   { UserDefaults.standard.bool(forKey: prev4Key) }
     private func setCelebrated4(_ v: Bool) { UserDefaults.standard.set(v, forKey: celebrate4Key) }
     private func setPrev4(_ v: Bool)       { UserDefaults.standard.set(v, forKey: prev4Key) }
-
+    
     // To-Do persistence key (global)
     private let TODO_PERSIST_KEY = "focus_todo_list"
-
+    
     var body: some View {
         NavigationStack {
             ScrollViewReader { proxy in
                 ZStack {
                     AppTheme.navy900.ignoresSafeArea()
-
+                    
                     List {
                         // Progress
                         Section {
@@ -90,12 +93,12 @@ struct DailyView: View {
                             .listRowInsets(.init(top: 12, leading: 16, bottom: 12, trailing: 16))
                         }
                         .listRowBackground(AppTheme.surface)
-
+                        
                         // Pillars
                         ForEach(Pillar.allCases, id: \.self) { pillar in
                             pillarBlock(pillar, proxy: proxy)
                         }
-
+                        
                         // To-Do (card includes its own title line with +)
                         Section {
                             TodoListCard(persistKey: TODO_PERSIST_KEY, todayString: todayString)
@@ -103,7 +106,31 @@ struct DailyView: View {
                                 .listRowSeparator(.hidden)
                                 .listRowBackground(AppTheme.navy900)
                         }
-
+                        
+                        // Save to Journal row (Daily snapshot) — Pro only
+                        Section {
+                            HStack {
+                                Spacer()
+                                
+                                if session.tier.canAccessJournal {
+                                    Button(action: { saveDailySnapshotToJournal() }) {
+                                        Text("Save to Journal")
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 10)
+                                            .background(AppTheme.appGreen)
+                                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Save Daily Checklist snapshot to Journal Library")
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                        }
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(AppTheme.navy900)
+                        
                         // Small bottom spacer so you can always scroll past the last card
                         Section { Color.clear.frame(height: 24) }
                             .listRowSeparator(.hidden)
@@ -114,7 +141,7 @@ struct DailyView: View {
                     .scrollContentBackground(.hidden)
                     .modifier(CompactListTweaks())
                     
-
+                    
                     // ⬇️ Confetti overlay — always on top of the List/toolbar
                     if showConfetti {
                         ConfettiView()
@@ -131,7 +158,7 @@ struct DailyView: View {
                         .allowsHitTesting(false)
                 }
             }
-
+            
             // Hidden push
             NavigationLink("", isActive: $goProfileEdit) {
                 ProfileEditView()
@@ -139,7 +166,7 @@ struct DailyView: View {
                     .environmentObject(session)
             }
             .hidden()
-
+            
             // Toolbar
             .toolbar {
                 // LEFT — 4Ps
@@ -155,7 +182,7 @@ struct DailyView: View {
                     }
                     .accessibilityLabel("Open 4 Ps Shield")
                 }
-
+                
                 // CENTER — title/date
                 ToolbarItem(placement: .principal) {
                     VStack(spacing: 2) {
@@ -167,7 +194,7 @@ struct DailyView: View {
                                     .font(.system(size: 11, weight: .bold))
                             }
                             .frame(width: 18, height: 18)
-
+                            
                             Text("Daily Defender Actions")
                                 .font(.headline.weight(.bold))
                                 .foregroundStyle(AppTheme.textPrimary)
@@ -179,7 +206,7 @@ struct DailyView: View {
                             .padding(.bottom, 6)
                     }
                 }
-
+                
                 // RIGHT — avatar → ProfileEdit
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Group {
@@ -203,18 +230,22 @@ struct DailyView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(AppTheme.navy900, for: .navigationBar)
             .toolbarColorScheme(.dark, for: .navigationBar)
-
+            
             // Shields / video
             .fullScreenCover(isPresented: $showFourPs) { ShieldPage(imageName: "four_ps") }
             .fullScreenCover(isPresented: $showVictoryModal) {
                 VictoryVideoModal(videoName: "youareamazingguy", isPresented: $showVictoryModal)
             }
-
+            
+            .alert("Saved to Journal ✅", isPresented: $showSavedAlert) {
+                Button("OK", role: .cancel) {}
+            }
+            
             // Seed & keyboard observers
             .onAppear {
                 setPrev2(completedCount >= 2)
                 setPrev4(completedCount >= 4)
-
+                
                 Task {
                     // Pull today's completed set from Firestore so checkmarks reflect prior state
                     await session.hydrateTodayDailyToLocal(store: store)
@@ -231,7 +262,7 @@ struct DailyView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
                 if let h = extractKeyboardHeight(from: note) { keyboardHeight = h; keyboardVisible = h > 0 }
             }
-
+            
             // Celebrations
             .onChange(of: completedCount) { newValue in
                 let nowAtLeast2 = newValue >= 2
@@ -244,7 +275,7 @@ struct DailyView: View {
                 } else if !prevAtLeast2 {
                     setPrev2(true)
                 }
-
+                
                 let nowAtLeast4 = newValue >= 4
                 if !nowAtLeast4 {
                     if hasCelebrated4 { setCelebrated4(false) }
@@ -261,7 +292,7 @@ struct DailyView: View {
             }
         }
     }
-
+    
     private func extractKeyboardHeight(from note: Notification) -> CGFloat? {
         guard
             let info = note.userInfo,
@@ -271,7 +302,7 @@ struct DailyView: View {
         let overlap = max(0, screen.maxY - endFrame.minY)
         return overlap
     }
-
+    
     // Smooth scroll helper (like Weekly)
     private func scrollTo(_ id: String, proxy: ScrollViewProxy) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -280,23 +311,23 @@ struct DailyView: View {
             }
         }
     }
-
+    
     // MARK: - Pillar block
     @ViewBuilder
     private func pillarBlock(_ pillar: Pillar, proxy: ScrollViewProxy) -> some View {
         let pid = pillarId(pillar)
         let checked = store.completed.contains(pid)
         let anchorId = "pillar-\(pid)"
-
+        
         Section {
             HStack(spacing: 8) {
                 SectionHeader(label: pillar.label, pillar: pillar, countText: nil)
                     .frame(maxWidth: .infinity, alignment: .leading)
-
+                
                 CheckSquare(checked: checked) {
                     // 1) local toggle
                     store.toggle(pid)
-
+                    
                     // 2) snapshot + upload today to Firestore immediately
                     afterToggleSyncToCloud()
                 }
@@ -305,7 +336,7 @@ struct DailyView: View {
             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
             .listRowSeparator(.hidden)
             .listRowBackground(AppTheme.navy900)
-
+            
             // ⬇️ SUB-TEXT INDENT FIX
             Text(pillarSubtitle(forLabel: pillar.label))
                 .font(.caption.italic())
@@ -314,7 +345,7 @@ struct DailyView: View {
                 .listRowInsets(.init(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(AppTheme.navy900)
-
+            
             // Notes card
             PlainNotesCard(
                 text: persistedFocus(for: pid),
@@ -332,7 +363,7 @@ struct DailyView: View {
             .id(anchorId)
         }
     }
-
+    
     // Pillar focus persistence
     private func focusKey(_ pid: String) -> String { "focus_\(pid)" }
     private func persistedFocus(for pid: String) -> String {
@@ -341,7 +372,7 @@ struct DailyView: View {
     private func setPersistedFocus(_ v: String, for pid: String) {
         UserDefaults.standard.set(v, forKey: focusKey(pid))
     }
-
+    
     // Celebrations
     private func fireConfettiAndAudio() {
         // Confetti respects User Settings
@@ -351,7 +382,7 @@ struct DailyView: View {
                 showConfetti = false
             }
         }
-
+        
         // Audio respects User Settings
         if CelebrationSettings.isAudioEnabled {
             if let url = Bundle.main.url(forResource: "welldone", withExtension: "mp3")
@@ -369,11 +400,139 @@ struct DailyView: View {
         df.dateFormat = "yyyyMMdd"
         let key = df.string(from: Date())
         UserDefaults.standard.set(Array(store.completed), forKey: "daily_completed_\(key)")
-
+        
         // Upload today doc immediately
         Task {
             await session.syncAfterDailyToggle(store: store)
         }
+    }
+    // MARK: - Save Daily snapshot to Journal (DCS, read-only)
+    private func saveDailySnapshotToJournal() {
+        let now = Date()
+        
+        let stampFmt = DateFormatter()
+        stampFmt.dateFormat = "yyyy-MM-dd HH:mm"
+        let stamp = stampFmt.string(from: now)
+        
+        let dayFmt = DateFormatter()
+        dayFmt.calendar = Calendar(identifier: .gregorian)
+        dayFmt.dateFormat = "yyyyMMdd"
+        let dayKey = dayFmt.string(from: now)
+        
+        func block(_ header: String, _ text: String) -> String {
+            let cleaned = text
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+                .map { "- \($0)" }
+                .joined(separator: "\n")
+            
+            return cleaned.isEmpty ? "\(header)\n" : "\(header)\n\(cleaned)\n"
+        }
+        
+        // Pillar IDs + status
+        let physPid   = pillarId(.Physiology)
+        let pietyPid  = pillarId(.Piety)
+        let peoplePid = pillarId(.People)
+        let prodPid   = pillarId(.Production)
+        
+        let physDone   = store.completed.contains(physPid)
+        let pietyDone  = store.completed.contains(pietyPid)
+        let peopleDone = store.completed.contains(peoplePid)
+        let prodDone   = store.completed.contains(prodPid)
+        
+        // Notes (your existing per-pillar focus notes)
+        let physNotes   = persistedFocus(for: physPid)
+        let pietyNotes  = persistedFocus(for: pietyPid)
+        let peopleNotes = persistedFocus(for: peoplePid)
+        let prodNotes   = persistedFocus(for: prodPid)
+        
+        // To-Do snapshot (best effort from UserDefaults blob)
+        let todoText = buildTodoSnapshotText(persistKey: TODO_PERSIST_KEY, todayString: todayString)
+        
+        let body = [
+            "📅 Daily Checklist Snapshot (\(stamp))",
+            "Day: \(dayKey)",
+            "Core Points: \(completedCount)/\(totalPossible)",
+            "",
+            "🏋 Physiology: \(physDone ? "DONE" : "NOT DONE")",
+            "🙏 Piety: \(pietyDone ? "DONE" : "NOT DONE")",
+            "👥 People: \(peopleDone ? "DONE" : "NOT DONE")",
+            "💼 Production: \(prodDone ? "DONE" : "NOT DONE")",
+            "",
+            block("🏋 Physiology Notes", physNotes),
+            block("🙏 Piety Notes", pietyNotes),
+            block("👥 People Notes", peopleNotes),
+            block("💼 Production Notes", prodNotes),
+            block("📝 To-Do List", todoText)
+        ]
+            .joined(separator: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        JournalMemoryStore.shared.addFreeFlow(
+            title: "DCS: Daily Checklist Snapshot: \(dayKey)",
+            body: body,
+            createdAt: now
+        )
+        
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        showSavedAlert = true
+    }
+    
+    /// Reads the persisted To-Do blob and emits a clean snapshot (best-effort).
+    /// - Removes checked items from prior days (since your UI clears them at midnight).
+    private func buildTodoSnapshotText(persistKey: String, todayString: String) -> String {
+        let CONTROL: Character = "\u{0001}"
+        let SEP: Character = "|"
+        let ITEM_SEP: Character = "\u{0002}"
+        
+        let blob = UserDefaults.standard.string(forKey: persistKey) ?? ""
+        guard !blob.isEmpty else { return "" }
+        
+        func decode(_ raw: String) -> (done: Bool, checkedOn: String, text: String)? {
+            guard !raw.isEmpty else { return nil }
+            var rest = raw
+            
+            // Legacy (no CONTROL): treat as plain text
+            guard rest.first == CONTROL else {
+                return (false, "", raw)
+            }
+            
+            rest.removeFirst()
+            
+            guard let i1 = rest.firstIndex(of: SEP) else { return nil }
+            let done = String(rest[..<i1]) == "1"
+            
+            let r1 = rest[rest.index(after: i1)...]
+            guard let i2 = r1.firstIndex(of: SEP) else { return nil }
+            let checkedOn = String(r1[..<i2])
+            
+            let text = String(r1[r1.index(after: i2)...])
+            return (done, checkedOn, text)
+        }
+        
+        let parts = blob.split(separator: ITEM_SEP, omittingEmptySubsequences: true).map(String.init)
+        let decoded = parts.compactMap(decode)
+        
+        // Prune empties + checked items from previous days
+        let active = decoded.filter { item in
+            let t = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if t.isEmpty && !item.done { return false }
+            if item.done && !item.checkedOn.isEmpty && item.checkedOn != todayString { return false }
+            return true
+        }
+        
+        guard !active.isEmpty else { return "" }
+        
+        // Render as simple lines (checked shows ✅)
+        return active
+            .map { item in
+                let t = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                return item.done ? "✅ \(t)" : t
+            }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
     }
 }
 
@@ -396,6 +555,7 @@ private struct CheckSquare: View {
         .buttonStyle(.plain)
     }
 }
+
 
 // PlainNotesCard — Weekly-style auto-growing UITextView
 private struct PlainNotesCard: View {
