@@ -85,7 +85,8 @@ To learn more about how your data is protected, read the App Privacy Manifesto i
 """)
                         }
 
-                        // 📊 Stats (NEW for iOS, matches Android)
+                        /*
+                         // 📊 Stats (NEW for iOS, matches Android)
                         CollapsibleSection(title: "📊 Stats", isExpanded: $expandStats) {
                             sectionText("""
 The Stats page gives you a clear picture of your progress over time. It automatically tallies your daily check marks and displays 7-, 30-, and 60-day totals for each quadrant so you can track consistency and trends.
@@ -119,7 +120,7 @@ Tap your avatar (top right) to open the Profile screen. From here you can:
                             sectionText("""
 The shield in the top-left corner of each screen helps provide key insights for the page you’re on. Tap it and you'll see a quick visual cue that reinforces the page’s purpose.
 """)
-                        }
+                        }*/
 
                         // 💬 Feedback (button opens email app)
                         CollapsibleSection(title: "💬 Feedback", isExpanded: $expandFeedback) {
